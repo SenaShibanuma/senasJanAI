@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ProjectSummary project_name="麻雀AI開発プロジェクト">
+    <!-- 
+        このドキュメントは、麻雀AI開発に関するこれまでの議論、決定事項、
+        および技術的な設計のすべてを網羅的にまとめたものである。
+        内容の正確性を担保するため、3回にわたるレビューを実施済み。
+    -->
+
+    <Goal>
+        <Title>プロジェクトの最終目標</Title>
+        <Description>
+            PC上の麻雀ゲーム画面をリアルタイムに認識、または対戦ログを解析し、
+            最適な行動（打牌、鳴き、リーチ等）を提案するAIツールを開発する。
+            最終的には、人間の模倣から脱却し、自己対戦（強化学習）を通じて
+            人間にはない独自の戦略を発見する、個人開発で可能な限りの最強AIを目指す。
+        </Description>
+    </Goal>
+
+    <DevelopmentPlan>
+        <Title>段階的開発計画</Title>
+        <Strategy name="MVPアプローチ">
+            最初に「最低限の機能で動くもの」を最速で作り上げ、
+            プロジェクト全体のパイプラインを確立する。その後、段階的に機能を拡張する。
+        </Strategy>
+        <Phase id="1" name="ベースキャンプ設営 (MVP)">
+            <Objective>打牌選択のみを行う、最小構成のAIを完成させる。</Objective>
+            <Focus>
+                <Item>機能: 打牌選択のみに限定。</Item>
+                <Item>思考: 自分の手牌のみを考慮した牌効率を基本とする。</Item>
+                <Item>モデル: シンプルなCNNまたはMLPをベースラインとして使用。</Item>
+            </Focus>
+            <Goal>AI開発の全工程（データ解析→学習→推論）を一度通し、動く基盤を作ることが最優先。</Goal>
+        </Phase>
+        <Phase id="2" name="機能拡張と高度化">
+            <Objective>AIの判断能力を多角的に強化する。</Objective>
+            <Tasks>
+                <Task priority="1">リーチ判断AIの実装。</Task>
+                <Task priority="2">副露判断AI（ポン・チー）の実装。</Task>
+                <Task priority="3">暗槓判断AIの実装。</Task>
+                <Task priority="4">他家や状況を考慮した、より高度な打牌選択AIへの改良。</Task>
+            </Tasks>
+        </Phase>
+        <Phase id="3" name="自己対戦による超人化 (強化学習)">
+            <Objective>人間の模倣（教師あり学習）の限界を超え、AI独自の最適戦略を発見させる。</Objective>
+            <Method>
+                Phase 2で完成したAIを初期モデルとし、AI同士を無数に対戦させ、
+                最終順位に基づいた報酬を与えることで自己進化を促す。
+            </Method>
+        </Phase>
+        <Phase id="4" name="最終形態への進化 (Transformer)">
+            <Objective>モデルアーキテクチャを、より強力なTransformerベースの統一モデルへ移行する。</Objective>
+            <Model>
+                一つの強力なTransformerモデルが、打牌・リーチ・副露・暗槓といった
+                全ての判断を同時に行う「マルチタスク学習」モデルを構築する。
+            </Model>
+        </Phase>
+    </DevelopmentPlan>
+
+    <TechnicalStack>
+        <Title>技術スタックと開発環境</Title>
+        <Language>Python</Language>
+        <Frameworks>
+            <Framework name="Deep Learning">TensorFlow (Keras) or PyTorch</Framework>
+            <Framework name="Data Handling">NumPy, Pandas</Framework>
+        </Frameworks>
+        <SimulationEnvironment name="mjai.app">
+            <Reason>
+                C++製のMjxが現在ビルド不可のため、代替案として採用。
+                安定しており、Web UIによる対局の可視化・再生機能がデバッグに極めて有用。
+            </Reason>
+            <Required>Node.js</Required>
+        </SimulationEnvironment>
+        <DevelopmentEnvironments>
+            <Environment name="ローカルPC">
+                <Role>開発拠点。コーディング、デバッグ、小規模な単体テストを行う。</Role>
+                <Tools>IDE, Git, Docker, Python仮想環境(venv)</Tools>
+            </Environment>
+            <Environment name="Google Colab Pro">
+                <Role>AIのジム/道場。GPUを駆使し、大規模なデータ前処理、モデルの本格学習、強化学習シミュレーションなど、重い計算処理をすべて担う。</Role>
+            </Environment>
+        </DevelopmentEnvironments>
+    </TechnicalStack>
+
+    <DataStrategy>
+        <Title>データ戦略</Title>
+        <Source name="天鳳">
+            <Target>鳳凰卓の牌譜ログ (.mjlog)</Target>
+            <Accessibility>トッププレイヤーのアーカイブ等が無料でダウンロード可能。</Accessibility>
+        </Source>
+        <Parsing>
+            <Method>
+                Pythonのgzipおよびxml.etree.ElementTreeライブラリを使用し、
+                .mjlogファイルを解析するカスタムパーサーを実装する。
+            </Method>
+        </Parsing>
+    </DataStrategy>
+
+    <FeatureTensorDesign model="CNN">
+        <Title>CNNモデル向け入力テンソル設計</Title>
+        <Description>
+            盤面状況を、CNNが読み込める多チャンネルの2次元テンソル (Channels, 34) に変換する。
+            34は牌の種類（萬子1-9, 筒子1-9, 索子1-9, 字牌7）に対応する。
+        </Description>
+
+        <ChannelGroup name="自分の情報">
+            <Channel id="0" name="手牌">各牌の所持枚数 (0-4)。</Channel>
+            <Channel id="1" name="副露">鳴いて公開した牌 (one-hot)。</Channel>
+            <Channel id="2-6" name="河 (直近履歴)">直近5巡の捨て牌 (各巡one-hot)。切り順を表現。</Channel>
+            <Channel id="7" name="河 (全体)">全ての捨て牌 (有無)。</Channel>
+            <Channel id="8" name="リーチ状態">リーチ中、チャンネル全体を1で埋める。</Channel>
+            <Channel id="9" name="リーチ宣言牌">宣言牌のみ1 (one-hot)。</Channel>
+        </ChannelGroup>
+
+        <ChannelGroup name="他家3人の情報">
+            <Description>下家、対面、上家それぞれに、自分と同様のチャンネルセットを用意する。</Description>
+            <SubChannels>副露, 河(直近履歴), 河(全体), リーチ状態, リーチ宣言牌</SubChannels>
+        </ChannelGroup>
+        
+        <ChannelGroup name="直前の打牌情報">
+            <Description>誰が、どの牌を直前に切ったかを表現する。</Description>
+            <Channel name="下家の直前打牌">下家が切った場合、その牌をone-hotで表現。</Channel>
+            <Channel name="対面の直前打牌">対面が切った場合、その牌をone-hotで表現。</Channel>
+            <Channel name="上家の直前打牌">上家が切った場合、その牌をone-hotで表現。</Channel>
+        </ChannelGroup>
+
+        <ChannelGroup name="共通・状況情報">
+            <Channel name="ドラ表示牌">現在見えているドラ表示牌 (one-hot)。</Channel>
+            <Channel name="局・巡目">東1局=0, 南4局=7のように数値化し正規化した値をチャンネルに埋める。</Channel>
+            <Channel name="点数 (4ch)">自分と他家3人の点数をそれぞれ正規化し、各チャンネルに埋める。</Channel>
+            <Channel name="順位 (4ch)">自分の順位をone-hotで表現 (例: 1位なら[1,0,0,0])し、各チャンネルに埋める。</Channel>
+            <Channel name="本場・供託">本場数と供託リーチ棒の数を正規化し、各チャンネルに埋める。</Channel>
+        </ChannelGroup>
+
+        <ChannelGroup name="計算済み補助情報">
+            <Strategy name="アプローチB">
+                AIにゼロから推測させるのではなく、プログラムで計算可能な最善の推測値を与え、
+                AIをより高度な戦略判断に集中させる。
+            </Strategy>
+            <RequiredLibrary>高速なPython麻雀ライブラリ (例: `mahjong`)</RequiredLibrary>
+            <Channel name="シャンテン数">計算したシャンテン数を正規化してチャンネルに埋める。</Channel>
+            <Channel name="聴牌時の待ち牌">聴牌時、待ち牌をone-hotで表現。</Channel>
+            <Channel name="待ち牌の山残り枚数">「4 - 見えている枚数」で計算した期待枚数を正規化して、対応する牌の位置に書き込む。</Channel>
+            <Channel name="待ち牌ごとの打点">待ち牌ごとにアガリ点を計算し、正規化して対応する牌の位置に書き込む。</Channel>
+            <Channel name="鳴き可能フラグ">ポン・チーが可能な場合、それを知らせるフラグをチャンネルに埋める。</Channel>
+        </ChannelGroup>
+    </FeatureTensorDesign>
+
+    <AIModelStrategy>
+        <Title>AIモデルアーキテクチャ戦略</Title>
+        <Phase name="CNNベース (通過点)">
+            <Architecture>マルチモデル戦略</Architecture>
+            <Description>
+                判断の種類ごとに、それぞれ専門のAI（モデル）を用意する。
+                入力テンソルは共通だが、出力（頭）が異なる。
+            </Description>
+            <Models>
+                <Model name="打牌選択AI">出力: 34種類の牌の確率。</Model>
+                <Model name="リーチ判断AI">出力: リーチする/しないの2値確率。</Model>
+                <Model name="副露判断AI">出力: ポン/チー/カン/スルーのn値確率。</Model>
+                <Model name="暗槓判断AI">出力: 暗槓する/しないの2値確率。</Model>
+            </Models>
+        </Phase>
+        <Phase name="Transformerベース (最終目標)">
+            <Architecture>統一マルチタスク学習モデル</Architecture>
+            <Description>
+                一つの強力なTransformerモデルが、全ての判断を同時にこなす。
+                共通の胴体（状況理解）と、タスクごとの頭（専門判断）を持つ。
+            </Description>
+            <Components>
+                <Component name="共通Body (Transformer)">盤面全体の文脈を深く理解する。</Component>
+                <Component name="専門Head (MLP)">打牌、リーチ、副露、暗槓など、各タスク専用の出力層。</Component>
+            </Components>
+        </Phase>
+    </AIModelStrategy>
+
+</ProjectSummary>
+<?xml version="1.0" encoding="UTF-8"?>
+<ProjectSummary project_name="麻雀AI開発プロジェクト">
+    <!-- 
+        このドキュメントは、麻雀AI開発に関するこれまでの議論、決定事項、
+        および技術的な設計のすべてを網羅的にまとめたものである。
+        内容の正確性を担保するため、3回にわたるレビューを実施済み。
+    -->
+
+    <Goal>
+        <Title>プロジェクトの最終目標</Title>
+        <Description>
+            PC上の麻雀ゲーム画面をリアルタイムに認識、または対戦ログを解析し、
+            最適な行動（打牌、鳴き、リーチ等）を提案するAIツールを開発する。
+            最終的には、人間の模倣から脱却し、自己対戦（強化学習）を通じて
+            人間にはない独自の戦略を発見する、個人開発で可能な限りの最強AIを目指す。
+        </Description>
+    </Goal>
+
+    <DevelopmentPlan>
+        <Title>段階的開発計画</Title>
+        <Strategy name="MVPアプローチ">
+            最初に「最低限の機能で動くもの」を最速で作り上げ、
+            プロジェクト全体のパイプラインを確立する。その後、段階的に機能を拡張する。
+        </Strategy>
+        <Phase id="1" name="ベースキャンプ設営 (MVP)">
+            <Objective>打牌選択のみを行う、最小構成のAIを完成させる。</Objective>
+            <Focus>
+                <Item>機能: 打牌選択のみに限定。</Item>
+                <Item>思考: 自分の手牌のみを考慮した牌効率を基本とする。</Item>
+                <Item>モデル: シンプルなCNNまたはMLPをベースラインとして使用。</Item>
+            </Focus>
+            <Goal>AI開発の全工程（データ解析→学習→推論）を一度通し、動く基盤を作ることが最優先。</Goal>
+        </Phase>
+        <Phase id="2" name="機能拡張と高度化">
+            <Objective>AIの判断能力を多角的に強化する。</Objective>
+            <Tasks>
+                <Task priority="1">リーチ判断AIの実装。</Task>
+                <Task priority="2">副露判断AI（ポン・チー）の実装。</Task>
+                <Task priority="3">暗槓判断AIの実装。</Task>
+                <Task priority="4">他家や状況を考慮した、より高度な打牌選択AIへの改良。</Task>
+            </Tasks>
+        </Phase>
+        <Phase id="3" name="自己対戦による超人化 (強化学習)">
+            <Objective>人間の模倣（教師あり学習）の限界を超え、AI独自の最適戦略を発見させる。</Objective>
+            <Method>
+                Phase 2で完成したAIを初期モデルとし、AI同士を無数に対戦させ、
+                最終順位に基づいた報酬を与えることで自己進化を促す。
+            </Method>
+        </Phase>
+        <Phase id="4" name="最終形態への進化 (Transformer)">
+            <Objective>モデルアーキテクチャを、より強力なTransformerベースの統一モデルへ移行する。</Objective>
+            <Model>
+                一つの強力なTransformerモデルが、打牌・リーチ・副露・暗槓といった
+                全ての判断を同時に行う「マルチタスク学習」モデルを構築する。
+            </Model>
+        </Phase>
+    </DevelopmentPlan>
+
+    <TechnicalStack>
+        <Title>技術スタックと開発環境</Title>
+        <Language>Python</Language>
+        <Frameworks>
+            <Framework name="Deep Learning">TensorFlow (Keras) or PyTorch</Framework>
+            <Framework name="Data Handling">NumPy, Pandas</Framework>
+        </Frameworks>
+        <SimulationEnvironment name="mjai.app">
+            <Reason>
+                C++製のMjxが現在ビルド不可のため、代替案として採用。
+                安定しており、Web UIによる対局の可視化・再生機能がデバッグに極めて有用。
+            </Reason>
+            <Required>Node.js</Required>
+        </SimulationEnvironment>
+        <DevelopmentEnvironments>
+            <Environment name="ローカルPC">
+                <Role>開発拠点。コーディング、デバッグ、小規模な単体テストを行う。</Role>
+                <Tools>IDE, Git, Docker, Python仮想環境(venv)</Tools>
+            </Environment>
+            <Environment name="Google Colab Pro">
+                <Role>AIのジム/道場。GPUを駆使し、大規模なデータ前処理、モデルの本格学習、強化学習シミュレーションなど、重い計算処理をすべて担う。</Role>
+            </Environment>
+        </DevelopmentEnvironments>
+    </TechnicalStack>
+
+    <DataStrategy>
+        <Title>データ戦略</Title>
+        <Source name="天鳳">
+            <Target>鳳凰卓の牌譜ログ (.mjlog)</Target>
+            <Accessibility>トッププレイヤーのアーカイブ等が無料でダウンロード可能。</Accessibility>
+        </Source>
+        <Parsing>
+            <Method>
+                Pythonのgzipおよびxml.etree.ElementTreeライブラリを使用し、
+                .mjlogファイルを解析するカスタムパーサーを実装する。
+            </Method>
+        </Parsing>
+    </DataStrategy>
+
+    <FeatureTensorDesign model="CNN">
+        <Title>CNNモデル向け入力テンソル設計</Title>
+        <Description>
+            盤面状況を、CNNが読み込める多チャンネルの2次元テンソル (Channels, 34) に変換する。
+            34は牌の種類（萬子1-9, 筒子1-9, 索子1-9, 字牌7）に対応する。
+        </Description>
+
+        <ChannelGroup name="自分の情報">
+            <Channel id="0" name="手牌">各牌の所持枚数 (0-4)。</Channel>
+            <Channel id="1" name="副露">鳴いて公開した牌 (one-hot)。</Channel>
+            <Channel id="2-6" name="河 (直近履歴)">直近5巡の捨て牌 (各巡one-hot)。切り順を表現。</Channel>
+            <Channel id="7" name="河 (全体)">全ての捨て牌 (有無)。</Channel>
+            <Channel id="8" name="リーチ状態">リーチ中、チャンネル全体を1で埋める。</Channel>
+            <Channel id="9" name="リーチ宣言牌">宣言牌のみ1 (one-hot)。</Channel>
+        </ChannelGroup>
+
+        <ChannelGroup name="他家3人の情報">
+            <Description>下家、対面、上家それぞれに、自分と同様のチャンネルセットを用意する。</Description>
+            <SubChannels>副露, 河(直近履歴), 河(全体), リーチ状態, リーチ宣言牌</SubChannels>
+        </ChannelGroup>
+        
+        <ChannelGroup name="直前の打牌情報">
+            <Description>誰が、どの牌を直前に切ったかを表現する。</Description>
+            <Channel name="下家の直前打牌">下家が切った場合、その牌をone-hotで表現。</Channel>
+            <Channel name="対面の直前打牌">対面が切った場合、その牌をone-hotで表現。</Channel>
+            <Channel name="上家の直前打牌">上家が切った場合、その牌をone-hotで表現。</Channel>
+        </ChannelGroup>
+
+        <ChannelGroup name="共通・状況情報">
+            <Channel name="ドラ表示牌">現在見えているドラ表示牌 (one-hot)。</Channel>
+            <Channel name="局・巡目">東1局=0, 南4局=7のように数値化し正規化した値をチャンネルに埋める。</Channel>
+            <Channel name="点数 (4ch)">自分と他家3人の点数をそれぞれ正規化し、各チャンネルに埋める。</Channel>
+            <Channel name="順位 (4ch)">自分の順位をone-hotで表現 (例: 1位なら[1,0,0,0])し、各チャンネルに埋める。</Channel>
+            <Channel name="本場・供託">本場数と供託リーチ棒の数を正規化し、各チャンネルに埋める。</Channel>
+        </ChannelGroup>
+
+        <ChannelGroup name="計算済み補助情報">
+            <Strategy name="アプローチB">
+                AIにゼロから推測させるのではなく、プログラムで計算可能な最善の推測値を与え、
+                AIをより高度な戦略判断に集中させる。
+            </Strategy>
+            <RequiredLibrary>高速なPython麻雀ライブラリ (例: `mahjong`)</RequiredLibrary>
+            <Channel name="シャンテン数">計算したシャンテン数を正規化してチャンネルに埋める。</Channel>
+            <Channel name="聴牌時の待ち牌">聴牌時、待ち牌をone-hotで表現。</Channel>
+            <Channel name="待ち牌の山残り枚数">「4 - 見えている枚数」で計算した期待枚数を正規化して、対応する牌の位置に書き込む。</Channel>
+            <Channel name="待ち牌ごとの打点">待ち牌ごとにアガリ点を計算し、正規化して対応する牌の位置に書き込む。</Channel>
+            <Channel name="鳴き可能フラグ">ポン・チーが可能な場合、それを知らせるフラグをチャンネルに埋める。</Channel>
+        </ChannelGroup>
+    </FeatureTensorDesign>
+
+    <AIModelStrategy>
+        <Title>AIモデルアーキテクチャ戦略</Title>
+        <Phase name="CNNベース (通過点)">
+            <Architecture>マルチモデル戦略</Architecture>
+            <Description>
+                判断の種類ごとに、それぞれ専門のAI（モデル）を用意する。
+                入力テンソルは共通だが、出力（頭）が異なる。
+            </Description>
+            <Models>
+                <Model name="打牌選択AI">出力: 34種類の牌の確率。</Model>
+                <Model name="リーチ判断AI">出力: リーチする/しないの2値確率。</Model>
+                <Model name="副露判断AI">出力: ポン/チー/カン/スルーのn値確率。</Model>
+                <Model name="暗槓判断AI">出力: 暗槓する/しないの2値確率。</Model>
+            </Models>
+        </Phase>
+        <Phase name="Transformerベース (最終目標)">
+            <Architecture>統一マルチタスク学習モデル</Architecture>
+            <Description>
+                一つの強力なTransformerモデルが、全ての判断を同時にこなす。
+                共通の胴体（状況理解）と、タスクごとの頭（専門判断）を持つ。
+            </Description>
+            <Components>
+                <Component name="共通Body (Transformer)">盤面全体の文脈を深く理解する。</Component>
+                <Component name="専門Head (MLP)">打牌、リーチ、副露、暗槓など、各タスク専用の出力層。</Component>
+            </Components>
+        </Phase>
+    </AIModelStrategy>
+
+</ProjectSummary>
