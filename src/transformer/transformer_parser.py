@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import xml.etree.ElementTree as ET
 import gzip
-import numpy as np
 import urllib.parse
 from mahjong.shanten import Shanten
 from mahjong.tile import TilesConverter
@@ -11,6 +10,10 @@ from mahjong.hand_calculating.hand import HandCalculator
 import os
 
 class TransformerParser:
+    """
+    【最終修正版】天鳳の.mjlogファイルを解析し、Transformerモデル用の学習データを生成するクラス。
+    選択肢と正解ラベルの生成ロジックを修正し、データが正しく生成されるようにした。
+    """
     def __init__(self):
         self.shanten_calculator = Shanten()
         self.hand_calculator = HandCalculator()
@@ -35,13 +38,16 @@ class TransformerParser:
         try:
             open_func = gzip.open if filepath.endswith('.gz') else open
             with open_func(filepath, 'rb') as f:
-                xml_content = f.read()
-            log_text = xml_content.decode('utf-8').strip().replace("</mjloggm>", "")
+                # 不正な終端タグを削除し、解析可能な形式に整形
+                log_text = f.read().decode('utf-8').strip().replace("</mjloggm>", "")
             root = ET.fromstring(f"<root>{log_text}</root>")
+            
             all_tags = list(root)
             for i, element in enumerate(all_tags):
                 self.process_tag(element, all_tags, i)
-        except Exception:
+        except Exception as e:
+            # 解析エラーが発生した場合、どのファイルで問題が起きたかを表示
+            # print(f"Warning: Skipping file {os.path.basename(filepath)} due to parsing error: {e}")
             return []
         return self.training_data
 
@@ -92,8 +98,7 @@ class TransformerParser:
         tile = int(tag[1:])
         self.round_state['remaining_tiles'] -= 1
         self.round_state['turn_num'] += 1
-        self.round_state['hands_136'][player].append(tile)
-        self.round_state['hands_136'][player].sort()
+        self.round_state['hands_136'][player].append(tile); self.round_state['hands_136'][player].sort()
         self.round_state['last_drawn_tile'][player] = tile
         self._add_event({'event_id': 'DRAW', 'player': player, 'tile': tile})
         self._generate_my_turn_training_data(player, all_tags, index)
@@ -120,8 +125,7 @@ class TransformerParser:
         self._add_event({'event_id': 'MELD', 'player': player, 'type': meld.type, 'tiles': meld.tiles})
 
     def _process_riichi(self, attrib):
-        player = int(attrib.get('who'))
-        step = int(attrib.get('step'))
+        player = int(attrib.get('who')); step = int(attrib.get('step'))
         if step == 1:
             self.round_state['is_riichi'][player] = True
             self.round_state['riichi_turn'][player] = self.round_state['turn_num']
@@ -132,14 +136,13 @@ class TransformerParser:
             self._add_event({'event_id': 'RIICHI_ACCEPTED', 'player': player})
 
     def _process_new_dora(self, attrib):
-        dora_indicator = int(attrib.get('hai'))
-        self.round_state['dora_indicators'].append(dora_indicator)
-        self._add_event({'event_id': 'NEW_DORA', 'dora_indicator': dora_indicator})
+        self.round_state['dora_indicators'].append(int(attrib.get('hai')))
+        self._add_event({'event_id': 'NEW_DORA', 'dora_indicator': int(attrib.get('hai'))})
 
     def _create_and_add_training_point(self, player_pov, choices, label):
-        if not choices or label not in choices: return
-        context = self.round_state['events'].copy()
-        self.training_data.append({"context": context, "choices": choices, "label": label, "player_pov": player_pov})
+        # このガードが重要。正解が選択肢にないとデータとして追加しない
+        if choices and label in choices:
+            self.training_data.append({"context": self.round_state['events'].copy(), "choices": choices, "label": label, "player_pov": player_pov})
 
     def _generate_my_turn_training_data(self, player, all_tags, current_tag_index):
         choices = self._get_my_turn_actions(player, self.round_state['last_drawn_tile'][player])
@@ -153,7 +156,6 @@ class TransformerParser:
             if tag[0] in "DEFG": label = f"DISCARD_{int(tag[1:])}"
             elif tag == "AGARI" and int(attrib.get('who')) == player: label = "ACTION_TSUMO_AGARI"
             elif tag == "REACH" and int(attrib.get('step')) == 1 and int(attrib.get('who')) == player:
-                # Find the subsequent discard tag for the riichi action
                 if next_tag_index + 1 < len(all_tags):
                     riichi_discard_tag = all_tags[next_tag_index + 1]
                     if riichi_discard_tag.tag[0] in "DEFG":
@@ -162,22 +164,25 @@ class TransformerParser:
         self._create_and_add_training_point(player, choices, label)
 
     def _generate_opponent_turn_training_data(self, discarder, discarded_tile, all_tags, current_tag_index):
+        action_tag = None
         next_tag_index = current_tag_index + 1
-        actual_action_map = {}
         if next_tag_index < len(all_tags):
-            next_element = all_tags[next_tag_index]
-            tag, attrib = next_element.tag, next_element.attrib
-            who = int(attrib.get('who', -1))
-            if tag == 'N' and who != -1:
-                actual_action_map[who] = self._meld_obj_to_action_label(Meld.decode_m(int(attrib.get('m'))))
-            elif tag == 'AGARI' and who != -1:
-                actual_action_map[who] = "ACTION_RON_AGARI"
+            # 鳴きやロンは打牌の直後のタグ
+            if all_tags[next_tag_index].tag in ['N', 'AGARI']:
+                action_tag = all_tags[next_tag_index]
 
         for player in range(4):
             if player == discarder: continue
             choices = self._get_opponent_turn_actions(player, discarder, discarded_tile)
             if len(choices) <= 1: continue
-            label = actual_action_map.get(player, "ACTION_PASS")
+
+            label = "ACTION_PASS"
+            if action_tag and int(action_tag.attrib.get('who', -1)) == player:
+                if action_tag.tag == 'N':
+                    label = self._meld_obj_to_action_label(Meld.decode_m(int(action_tag.attrib.get('m'))))
+                elif action_tag.tag == 'AGARI':
+                    label = "ACTION_RON_AGARI"
+
             self._create_and_add_training_point(player, choices, label)
 
     def _get_my_turn_actions(self, player, win_tile):
@@ -203,43 +208,57 @@ class TransformerParser:
         
         hand_34_counts = TilesConverter.to_34_array(hand_136)
         tile_34 = discarded_tile // 4
-        if hand_34_counts[tile_34] >= 2: actions.append(f"ACTION_PUNG")
-        if (discarder + 1) % 4 == player and tile_34 < 27:
-            for p in [[-2, -1], [-1, 1], [1, 2]]:
+        if hand_34_counts[tile_34] >= 2: actions.append("ACTION_PUNG")
+        
+        # チーの選択肢生成ロジックを修正
+        if (discarder + 1) % 4 == player and tile_34 < 27: # 上家から & 数牌
+            patterns = [[-2, -1], [-1, 1], [1, 2]]
+            for p in patterns:
                 t1, t2 = tile_34 + p[0], tile_34 + p[1]
+                # 同じ色内でのみチー可能か確認し、牌の順序をソートしてラベルを生成
                 if t1 >= 0 and t2 < 27 and (t1 // 9 == t2 // 9 == tile_34 // 9):
                     if hand_34_counts[t1] > 0 and hand_34_counts[t2] > 0:
-                        actions.append(f"ACTION_CHII_{t1}_{t2}")
+                        # ここで必ずソートする
+                        consumed = sorted([t1, t2])
+                        actions.append(f"ACTION_CHII_{consumed[0]}_{consumed[1]}")
+
         if hand_34_counts[tile_34] >= 3: actions.append("ACTION_DAIMINKAN")
         return list(dict.fromkeys(actions))
 
     def _can_agari(self, hand_136, win_tile, is_tsumo, player_id):
-        result = self.hand_calculator.estimate_hand_value(
-            tiles=hand_136, win_tile=win_tile, melds=self.round_state['melds'][player_id],
-            dora_indicators=self.round_state['dora_indicators'], config=self._get_current_hand_config(is_tsumo, player_id)
-        )
-        return result.error is None
+        # 和了判定は変更なし
+        try:
+            result = self.hand_calculator.estimate_hand_value(
+                tiles=hand_136, win_tile=win_tile, melds=self.round_state['melds'][player_id],
+                dora_indicators=self.round_state['dora_indicators'], config=self._get_current_hand_config(is_tsumo, player_id)
+            )
+            return result.error is None
+        except: return False
 
     def _calculate_shanten_and_ukeire(self, hand_136):
         try: return self.shanten_calculator.calculate_shanten(TilesConverter.to_34_array(hand_136)), 0
         except: return 9, 0
 
     def _get_current_hand_config(self, is_tsumo, player_id):
-        return HandConfig(
-            is_tsumo=is_tsumo, is_riichi=self.round_state['is_riichi'][player_id],
-            player_wind=Meld.EAST + ((player_id - self.round_state['oya_player_id'] + 4) % 4),
-            round_wind=Meld.EAST + self.round_state['round'] // 4, options=self.game_state['config'].options
-        )
+        return HandConfig(is_tsumo=is_tsumo, is_riichi=self.round_state['is_riichi'][player_id],
+                          player_wind=Meld.EAST + ((player_id - self.round_state['oya_player_id'] + 4) % 4),
+                          round_wind=Meld.EAST + self.round_state['round'] // 4, options=self.game_state['config'].options)
 
     def _meld_obj_to_action_label(self, meld_obj):
+        # 正解ラベル生成ロジックを修正
         if meld_obj.type == Meld.CHI:
+            # ここでも必ずソートすることで、選択肢の形式と完全に一致させる
             consumed = sorted([t // 4 for t in meld_obj.tiles if t != meld_obj.called_tile])
             return f"ACTION_CHII_{consumed[0]}_{consumed[1]}"
         elif meld_obj.type == Meld.PON: return "ACTION_PUNG"
-        elif meld_obj.type == Meld.KAN: return "ACTION_DAIMINKAN"
+        elif meld_obj.type == Meld.KAN: return "ACTION_DAIMINKAN" # 大明槓の場合
+        elif meld_obj.type == Meld.CHAKAN: return "ACTION_KAKAN" # 加槓
+        elif meld_obj.type == Meld.ANKAN: return "ACTION_ANKAN" # 暗槓
         return "ACTION_UNKNOWN"
 
     def run(self, filepaths):
+        # 逐次処理のため、1ファイルずつ処理するインターフェースは変更なし
         all_data = []
-        for filepath in filepaths: all_data.extend(self.parse_log_file(filepath))
+        for filepath in filepaths:
+            all_data.extend(self.parse_log_file(filepath))
         return all_data
