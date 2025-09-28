@@ -1,2 +1,5 @@
 /data/
+/data_zip/
 /models/
+/processed_data/
+/src/transformer/__pycache__/
