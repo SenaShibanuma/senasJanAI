@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import tensorflow as tf
-from .train_transformer import vectorize_event, vectorize_choice, MAX_CONTEXT_LENGTH, MAX_CHOICES
+import os
+# train_transformerから仕様書準拠のベクトル化関数と定数をインポート
+from .train_transformer import vectorize_event, vectorize_choice, MAX_CONTEXT_LENGTH, MAX_CHOICES, VECTOR_DIM
 
 def main():
     """
@@ -21,25 +23,30 @@ def main():
     
     # --- 予測したい状況をここに設定 ---
     
+    # どのプレイヤー視点での予測か
+    player_pov_id = 0
+
     # 1. 文脈(Context)をイベントシーケンスとして作成
-    # (実際のパーサーから取得する必要があるが、ここではダミーを作成)
     sample_context = [
-        {'event_id': 'INIT', 'round': 0, 'honba': 0, 'dora_indicator': 0},
-        {'event_id': 'DRAW', 'player': 0, 'tile': 10},
-        # ... 多くのイベントが続く ...
+        {'event_id': 'INIT', 'round': 0, 'honba': 0, 'dora_indicator': 5, 'scores': [25000]*4, 'riichi_sticks': 0, 'remaining_tiles': 70, 'turn_num': 0},
+        {'event_id': 'DRAW', 'player': 0, 'tile': 50, 'turn_num': 1, 'scores': [25000]*4, 'riichi_sticks': 0, 'remaining_tiles': 69},
+        {'event_id': 'DISCARD', 'player': 0, 'tile': 20, 'is_tedashi': True, 'turn_num': 1, 'scores': [25000]*4, 'riichi_sticks': 0, 'remaining_tiles': 69},
+        # ... 他のプレイヤーのイベントが続く ...
+        {'event_id': 'DRAW', 'player': 0, 'tile': 100, 'turn_num': 5, 'scores': [24000, 25000, 26000, 25000], 'riichi_sticks': 1, 'remaining_tiles': 55},
     ]
     
     # 2. その瞬間に可能な「選択肢(Action Space)」のリストを作成
     sample_choices_str = [
-        "DISCARD_27_False", # 捨てる: 東 (赤ではない)
-        "DISCARD_30_False", # 捨てる: 白
-        "ACTION_RIICHI"
+        "DISCARD_27", 
+        "DISCARD_30",
+        "DISCARD_100",
+        "ACTION_RIICHI_30"
     ]
     
     # --- ここから下は編集不要 ---
     
     # データをモデルの入力形式に変換
-    context_vecs = [vectorize_event(e) for e in sample_context]
+    context_vecs = [vectorize_event(e, player_pov_id) for e in sample_context]
     choice_vecs = [vectorize_choice(c) for c in sample_choices_str]
     
     padded_context = tf.keras.preprocessing.sequence.pad_sequences(
