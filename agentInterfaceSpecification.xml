@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AgentInterfaceSpecification>
+
+    <Observation name="観測">
+        <Description>
+            AIが判断を下すために受け取る、その瞬間の全ての情報。
+            「過去の出来事の連続（文脈）」と「今できること（選択肢）」の2部で構成される。
+        </Description>
+
+        <Part name="文脈 (Context)">
+            <Description>
+                局の開始から現在までの、全てのイベントの時系列リスト。
+                AIはこのシーケンスを読み解き、ゲームの流れと状況を理解する。
+            </Description>
+            <Structure>
+                List of [Event Vector]
+            </Structure>
+        </Part>
+        
+        <Part name="選択肢 (Action Space)">
+            <Description>
+                この瞬間に、ルール上実行可能な全ての行動のリスト。
+                AIはこのリストの中から、最も価値が高いと判断した行動を一つだけ選択する。
+            </Description>
+            <Structure>
+                List of [Action Vector]
+            </Structure>
+        </Part>
+    </Observation>
+
+    <VectorDefinitions>
+    
+        <EventVector name="イベントベクトル">
+            <Description>
+                過去の出来事一つ一つを表す、固定長の数値ベクトル。
+                全てのイベントには、以下の共通パラメータが含まれる。
+            </Description>
+            <CommonParameters>
+                <Parameter name="Event_ID" type="Integer">イベントの種類を示すID</Parameter>
+                <Parameter name="Player_ID" type="Integer">行動の主体となったプレイヤーID (0-3)</Parameter>
+                <Parameter name="Turn_Counter" type="Integer">巡目 (1巡目, 2巡目...)</Parameter>
+                <Parameter name="Scores" type="Vector(4)">【動的】4人全員の現在点</Parameter>
+                <Parameter name="Riichi_Sticks" type="Integer">【動的】供託リーチ棒の数</Parameter>
+                <Parameter name="Remaining_Tiles_Count" type="Integer">【動的】牌山の残り枚数</Parameter>
+                <Parameter name="Visible_Tiles_Vector" type="Vector(34)">【集約】全見え牌（河、副露、ドラ表示牌）の枚数ベクトル</Parameter>
+            </CommonParameters>
+            
+            <EventTypes>
+                <Event name="GAME_START">
+                    <Description>対局開始時に一度だけ送られる、不変のルール情報。</Description>
+                    <Parameter name="has_kuitan" type="Flag (0/1)">喰断の有無</Parameter>
+                    <Parameter name="has_aka_dora" type="Flag (0/1)">赤ドラの有無</Parameter>
+                    <Parameter name="ranking_uma" type="Vector">順位ウマ</Parameter>
+                </Event>
+                
+                <Event name="INIT">
+                    <Description>各局の開始情報。</Description>
+                    <Parameter name="round" type="Integer">局（東1=0, ...）</Parameter>
+                    <Parameter name="honba" type="Integer">本場</Parameter>
+                    <Parameter name="oya_player_id" type="Integer">この局の親プレイヤーID</Parameter>
+                    <Parameter name="ranks" type="Vector">4人全員の現在順位</Parameter>
+                    <Parameter name="dora_indicator" type="Integer">最初のドラ表示牌 (0-33)</Parameter>
+                    <Parameter name="my_initial_hand" type="Vector(34)">自分の配牌（牌種別の枚数）</Parameter>
+                </Event>
+                
+                <Event name="DRAW">
+                    <Description>ツモ。</Description>
+                    <Parameter name="drawn_tile" type="Integer">ツモった牌 (0-33)</Parameter>
+                    <Parameter name="is_red_dora" type="Flag (0/1)">ツモった牌が赤ドラか</Parameter>
+                    <Parameter name="is_ippatsu_turn" type="Flag (0/1)">一発の巡目か</Parameter>
+                    <Parameter name="is_furiten" type="Flag (0/1)">フリテン状態か</Parameter>
+                    <Parameter name="current_shanten" type="Integer">ツモ後の向聴数</Parameter>
+                </Event>
+                
+                <Event name="DISCARD">
+                    <Description>打牌。</Description>
+                    <Parameter name="discarded_tile" type="Integer">捨てた牌 (0-33)</Parameter>
+                    <Parameter name="is_red_dora" type="Flag (0/1)">捨てた牌が赤ドラか</Parameter>
+                    <Parameter name="is_tedashi" type="Flag (0/1)">手出しかツモ切りか</Parameter>
+                </Event>
+                
+                <Event name="OPEN_MELD">
+                    <Description>他家の捨て牌に対する副露（ポン、チー、大明槓）。</Description>
+                    <Parameter name="meld_type" type="Integer">鳴きの種類ID</Parameter>
+                    <Parameter name="from_who" type="Integer">誰から鳴いたか（相対位置）</Parameter>
+                    <Parameter name="exposed_tiles" type="Vector(34)">晒した牌</Parameter>
+                </Event>
+                
+                 <Event name="RIICHI">
+                    <Description>リーチ宣言。</Description>
+                    <Parameter name="step" type="Integer">リーチの段階（1=宣言, 2=成立）</Parameter>
+                    <Parameter name="riichi_declaration_tile" type="Integer">リーチ宣言牌 (0-33)</Parameter>
+                </Event>
+                
+                <Event name="NEW_DORA">
+                    <Description>カンによる新ドラ表示。</Description>
+                    <Parameter name="dora_indicator" type="Integer">新たなドラ表示牌 (0-33)</Parameter>
+                </Event>
+                
+                <Event name="AGARI">
+                    <Description>和了イベント。</Description>
+                    <Parameter name="winner_player_id" type="Integer">和了者</Parameter>
+                    <Parameter name="loser_player_id" type="Integer">放銃者</Parameter>
+                    <Parameter name="score_change_vector" type="Vector">全員の点数移動</Parameter>
+                </Event>
+                
+                <Event name="RYUKYOKU">
+                    <Description>流局イベント。</Description>
+                    <Parameter name="reason" type="Integer">流局理由ID</Parameter>
+                    <Parameter name="score_change_vector" type="Vector">聴牌料による点数移動</Parameter>
+                </Event>
+            </EventTypes>
+        </EventVector>
+
+        <ActionVector name="行動ベクトル">
+            <Description>
+                実行可能な各選択肢を表現するベクトル。
+            </Description>
+            <ActionTypes>
+                <Action name="DISCARD">
+                    <Parameter name="action_id" type="Integer">行動の種類（打牌）</Parameter>
+                    <Parameter name="target_tile" type="Integer">どの牌を捨てるか (0-33)</Parameter>
+                    <Parameter name="is_red_dora" type="Flag (0/1)">捨てる牌が赤ドラか</Parameter>
+                </Action>
+                
+                <Action name="PUNG"> <Parameter name="action_id" type="Integer">行動の種類（ポン）</Parameter>
+                </Action>
+
+                <Action name="CHII">
+                    <Parameter name="action_id" type="Integer">行動の種類（チー）</Parameter>
+                    <Parameter name="consumed_tiles" type="Vector(2)">チーに使う2枚の牌</Parameter>
+                </Action>
+
+                <Action name="DAIMINKAN"> <Parameter name="action_id" type="Integer">行動の種類（大明槓）</Parameter>
+                </Action>
+
+                <Action name="RIICHI">
+                    <Parameter name="action_id" type="Integer">行動の種類（リーチ）</Parameter>
+                    <Parameter name="discard_after_riichi" type="Integer">リーチ後にどの牌を切るか (0-33)</Parameter>
+                </Action>
+                
+                <Action name="CLOSED_KAN"> <Parameter name="action_id" type="Integer">行動の種類（暗槓）</Parameter>
+                    <Parameter name="target_tile" type="Integer">どの牌をカンするか (0-33)</Parameter>
+                </Action>
+                
+                <Action name="PROMOTED_KAN"> <Parameter name="action_id" type="Integer">行動の種類（加槓）</Parameter>
+                    <Parameter name="target_tile" type="Integer">どの牌をカンするか (0-33)</Parameter>
+                </Action>
+                
+                <Action name="TSUMO_AGARI">
+                    <Parameter name="action_id" type="Integer">行動の種類（ツモ和了）</Parameter>
+                </Action>
+                
+                <Action name="RON_AGARI">
+                    <Parameter name="action_id" type="Integer">行動の種類（ロン和了）</Parameter>
+                </Action>
+                
+                <Action name="KYUSHU_KYUHAI">
+                    <Parameter name="action_id" type="Integer">行動の種類（九種九牌）</Parameter>
+                </Action>
+
+                <Action name="PASS">
+                    <Parameter name="action_id" type="Integer">行動の種類（パス/スルー）</Parameter>
+                </Action>
+            </ActionTypes>
+        </ActionVector>
+
+    </VectorDefinitions>
+
+</AgentInterfaceSpecification>
