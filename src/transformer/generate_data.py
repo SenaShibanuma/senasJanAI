@@ -2,56 +2,89 @@
 import os
 import pickle
 import time
+import numpy as np
 from .transformer_parser import TransformerParser
 from .train_transformer import preprocess_data # ベクトル化関数をインポート
 
 def generate_and_save_data(data_dir, output_path):
     """
-    【改良版】指定されたディレクトリからログファイルを解析し、前処理済みのデータを
-    指定されたパスに保存する。os.scandir() を使用して大量のファイルによるタイムアウトを回避する。
+    【メモリ対策版】ファイルを1つずつ処理し、即座にベクトル化することで、
+    大量のファイルを扱う際のメモリ不足を回避する。
     """
-    print("--- Starting Data Generation (Robust Version) ---")
+    print("--- Starting Data Generation (Memory Safe Version) ---")
     
     if not os.path.isdir(data_dir):
         print(f"Error: The specified data directory '{data_dir}' does not exist or is not a directory.")
         return
 
-    # 1. ログファイルのパスを効率的に取得
+    # 1. ログファイルのパスをスキャン
     log_files = []
     print(f"Scanning for log files in '{data_dir}'...")
     try:
-        # os.listdir() の代わりに os.scandir() を使用してタイムアウトを回避
         for entry in os.scandir(data_dir):
             if entry.is_file() and (entry.name.endswith('.mjlog') or entry.name.endswith('.gz')):
                 log_files.append(entry.path)
     except OSError as e:
         print(f"Error while scanning directory '{data_dir}': {e}")
-        print("Please check if the directory is accessible and not corrupted.")
         return
 
     if not log_files:
         print(f"Error: No log files (.mjlog or .mjlog.gz) found in '{data_dir}'.")
         return
 
-    print(f"Successfully found {len(log_files)} log files to process.")
-    # 意図的に少し待機し、Driveの同期を安定させる
+    total_files = len(log_files)
+    print(f"Found {total_files} log files. Starting iterative processing...")
     time.sleep(2)
 
-    # 2. パーサーを実行して生データを抽出
     parser = TransformerParser()
-    training_data = parser.run(log_files)
+    
+    # 最終的なベクトルデータを格納するリスト
+    all_contexts = []
+    all_choices = []
+    all_labels = []
+    
+    # 2. ファイルを1つずつループ処理
+    for i, filepath in enumerate(log_files):
+        # 100ファイルごとに進捗を表示
+        if (i + 1) % 100 == 0:
+            filename = os.path.basename(filepath)
+            print(f"Processing file {i+1}/{total_files}: {filename}")
 
-    if not training_data:
-        print("Error: No training data could be extracted from the log files.")
+        # a) 単一のファイルを解析
+        try:
+            raw_data_points = parser.parse_log_file(filepath)
+        except Exception:
+            # XML解析エラーなどが発生した場合はスキップ
+            continue
+
+        if not raw_data_points:
+            continue
+
+        # b) 即座にベクトル化
+        contexts, choices, labels = preprocess_data(raw_data_points)
+
+        # c) 結果をリストに追加（numpy配列をpythonリストに変換して追加）
+        if labels.size > 0:
+            all_contexts.extend(list(contexts))
+            all_choices.extend(list(choices))
+            all_labels.extend(list(labels))
+
+    # 3. 最終確認
+    if not all_labels:
+        print("\nError: No training data could be extracted from the log files after processing.")
+        print("This might be due to issues in the parser logic or incompatible log file formats.")
         return
+
+    print(f"\nSuccessfully processed all files. Aggregating final dataset containing {len(all_labels)} samples...")
     
-    print(f"\nSuccessfully parsed {len(training_data)} data points.")
+    # 4. 全てのベクトルデータをNumPy配列に結合
+    final_contexts_np = np.array(all_contexts, dtype=np.float32)
+    final_choices_np = np.array(all_choices, dtype=np.float32)
+    final_labels_np = np.array(all_labels, dtype=np.int32)
+
+    processed_dataset = (final_contexts_np, final_choices_np, final_labels_np)
     
-    # 3. データをベクトル形式に前処理
-    print("Preprocessing and vectorizing data for the model...")
-    processed_dataset = preprocess_data(training_data)
-    
-    # 4. データをファイルに保存 (常に上書き)
+    # 5. データセットを保存
     print(f"Saving processed dataset to '{output_path}'...")
     output_dir = os.path.dirname(output_path)
     if not os.path.exists(output_dir):
@@ -61,7 +94,7 @@ def generate_and_save_data(data_dir, output_path):
         pickle.dump(processed_dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
         
     print("--- Data Generation Complete ---")
-    print(f"Dataset saved successfully. Total samples: {len(processed_dataset[2])}")
+    print(f"Dataset saved successfully. Total samples: {len(final_labels_np)}")
 
 
 def main():
