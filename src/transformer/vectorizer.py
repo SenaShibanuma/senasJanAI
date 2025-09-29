@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 
 # --- グローバル定数 (プロジェクト全体で共有) ---
+# ▼▼▼【修正点】変数名を'MAX_CONTEXT_EVENTS'から'MAX_CONTEXT_LENGTH'に変更し、プロジェクト全体で統一しました ▼▼▼
 MAX_CONTEXT_LENGTH = 150
 MAX_CHOICES = 50
 VECTOR_DIM = 100
