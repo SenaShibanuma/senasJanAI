@@ -2,8 +2,8 @@
 import numpy as np
 import tensorflow as tf
 import os
-# 整理されたvectorizerから定数と関数をインポート
-from .vectorizer import vectorize_event, vectorize_choice, MAX_CONTEXT_LENGTH, MAX_CHOICES
+# ベクトライザから関数と定数をインポート
+from .vectorizer import vectorize_context, vectorize_choice, MAX_CONTEXT_LENGTH, MAX_CHOICES
 
 def main():
     """
@@ -22,35 +22,36 @@ def main():
     print("\n--- Preparing sample data for prediction ---")
     
     # --- 予測したい状況をここに設定 ---
-    player_pov_id = 0
-    sample_context = [
-        {'event_id': 'INIT', 'round': 0, 'honba': 0, 'dora_indicator': 5, 'scores': [25000]*4, 'riichi_sticks': 0, 'remaining_tiles': 70, 'turn_num': 0},
-        {'event_id': 'DRAW', 'player': 0, 'tile': 50, 'turn_num': 1, 'scores': [25000]*4, 'riichi_sticks': 0, 'remaining_tiles': 69},
-        {'event_id': 'DISCARD', 'player': 0, 'tile': 20, 'is_tedashi': True, 'turn_num': 1, 'scores': [25000]*4, 'riichi_sticks': 0, 'remaining_tiles': 69},
-        {'event_id': 'DRAW', 'player': 0, 'tile': 100, 'turn_num': 5, 'scores': [24000, 25000, 26000, 25000], 'riichi_sticks': 1, 'remaining_tiles': 55},
+    # (例：東1局5巡目、自分がリーチをかけるべきか悩んでいる状況)
+    pov_player = 0
+    sample_context_events = [
+        {'type': 'start_kyoku', 'bakaze': 'E', 'kyoku': 1, 'honba': 0, 'kyotaku': 0, 'oya': 0, 'scores': [25000, 25000, 25000, 25000], 'dora_marker': 4},
+        {'type': 'haipai', 'actor': 0, 'pai': ['1m', '2m', '3m', '4p', '5p', '6p', '7s', '8s', '9s', 'N', 'N', 'C', 'C']},
+        {'type': 'tsumo', 'actor': 0, 'pai': 'N'},
+        {'type': 'dahai', 'actor': 0, 'pai': 'C'},
+        # ... (中略) ...
+        {'type': 'tsumo', 'actor': 0, 'pai': '6s'},
     ]
     sample_choices_str = [
-        "DISCARD_27", 
-        "DISCARD_30",
-        "DISCARD_100",
-        "ACTION_RIICHI_30"
+        "DAHAI_8",   # 2s
+        "DAHAI_24",  # 6s (ツモ切り)
+        "REACH_8",   # 2s切りリーチ
+        "REACH_24"   # 6s切りリーチ
     ]
     
     # --- ここから下は編集不要 ---
     
     # データをベクトル化
-    context_vecs = [vectorize_event(e, player_pov_id) for e in sample_context]
+    context_vec = vectorize_context(sample_context_events, pov_player)
     choice_vecs = [vectorize_choice(c) for c in sample_choices_str]
     
-    # パディング処理
+    # パディングとNumpy配列化
     padded_context = tf.keras.preprocessing.sequence.pad_sequences(
-        [context_vecs], maxlen=MAX_CONTEXT_LENGTH, dtype='float32', padding='post'
+        [context_vec], maxlen=MAX_CONTEXT_LENGTH, dtype='float32', padding='post'
     )
     padded_choices = tf.keras.preprocessing.sequence.pad_sequences(
         [choice_vecs], maxlen=MAX_CHOICES, dtype='float32', padding='post'
     )
-
-    # ▼▼▼【重要】予測時にもマスクを作成する ▼▼▼
     prediction_mask = np.zeros((1, MAX_CHOICES), dtype='float32')
     prediction_mask[0, :len(sample_choices_str)] = 1.0
 
@@ -69,7 +70,6 @@ def main():
         choice_str = sample_choices_str[choice_idx]
         score = scores[choice_idx]
         print(f"{i+1}. Action: {choice_str:<25} (Score: {score:.4f})")
-
 
 if __name__ == '__main__':
     main()

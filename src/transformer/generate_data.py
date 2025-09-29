@@ -4,6 +4,7 @@ import pickle
 import time
 import numpy as np
 import glob
+# ▼▼▼【修正点】ここを正しいパーサークラス名に変更しました ▼▼▼
 from .transformer_parser import TransformerParser
 from .train_transformer import preprocess_data
 
@@ -54,11 +55,14 @@ def generate_data_in_chunks(data_dir, chunk_dir, chunk_size=1000):
         try:
             raw_data_points = parser.parse_log_file(filepath)
             if raw_data_points:
-                contexts, choices, labels = preprocess_data(raw_data_points)
+                # preprocess_dataは4つの値を返すので、マスクも受け取る
+                contexts, choices, labels, masks = preprocess_data(raw_data_points)
                 if labels.size > 0:
                     chunk_contexts.extend(list(contexts))
                     chunk_choices.extend(list(choices))
                     chunk_labels.extend(list(labels))
+                    # 注意: このスクリプトではマスクは最終的に使用されませんが、
+                    # preprocess_dataとの互換性のために受け取ります。
         except Exception as e:
             # 個別ファイルの解析エラーは無視して次に進む
             # print(f"Warning: Skipping file {os.path.basename(filepath)} due to error: {e}")
@@ -68,10 +72,11 @@ def generate_data_in_chunks(data_dir, chunk_dir, chunk_size=1000):
         if (i + 1) % chunk_size == 0 or (i + 1) == total_files:
             if chunk_labels:
                 print(f"Saving chunk {chunk_num}... ({len(chunk_labels)} samples)")
+                # preprocess_dataの返り値に合わせてnp.arrayに変換
                 chunk_dataset = (
-                    np.array(chunk_contexts, dtype=np.float32),
-                    np.array(chunk_choices, dtype=np.float32),
-                    np.array(chunk_labels, dtype=np.int32)
+                    np.array(chunk_contexts),
+                    np.array(chunk_choices),
+                    np.array(chunk_labels)
                 )
                 chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_num}.pkl")
                 with open(chunk_path, 'wb') as f:
@@ -102,20 +107,32 @@ def merge_chunks(chunk_dir, output_path):
 
     # 最初のチャンクをロードして初期化
     with open(chunk_files[0], 'rb') as f:
-        final_contexts, final_choices, final_labels = pickle.load(f)
+        # preprocess_dataの出力に合わせてアンパックする
+        contexts_list, choices_list, labels_list = pickle.load(f)
 
     # 2番目以降のチャンクを順番に結合
     for chunk_file in chunk_files[1:]:
         with open(chunk_file, 'rb') as f:
             contexts, choices, labels = pickle.load(f)
-            final_contexts = np.vstack((final_contexts, contexts))
-            final_choices = np.vstack((final_choices, choices))
-            final_labels = np.hstack((final_labels, labels))
-        print(f"Merged {os.path.basename(chunk_file)}. Total samples: {len(final_labels)}")
+            contexts_list = np.vstack((contexts_list, contexts))
+            choices_list = np.vstack((choices_list, choices))
+            labels_list = np.hstack((labels_list, labels))
+        print(f"Merged {os.path.basename(chunk_file)}. Total samples: {len(labels_list)}")
 
     # 最終データセットを保存
     print(f"\nSaving final merged dataset to '{output_path}'...")
-    final_dataset = (final_contexts, final_choices, final_labels)
+    # train_transformer.pyが期待する形式（4つの要素）で保存する
+    # マスクデータはここで生成する
+    masks = []
+    for choices in choices_list:
+        mask = np.zeros(choices.shape[0], dtype='float32')
+        # パディングされていない実際の選択肢の数を数える必要がある
+        # ここでは単純化のため、ベクトルがゼロでない限り有効とみなす
+        num_actual_choices = np.count_nonzero(np.sum(choices, axis=1))
+        mask[:num_actual_choices] = 1.0
+        masks.append(mask)
+
+    final_dataset = (contexts_list, choices_list, labels_list, np.array(masks))
     with open(output_path, 'wb') as f:
         pickle.dump(final_dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
     
@@ -126,7 +143,7 @@ def merge_chunks(chunk_dir, output_path):
     os.rmdir(chunk_dir)
 
     print("--- Merging Complete ---")
-    print(f"Final dataset saved. Total samples: {len(final_labels)}")
+    print(f"Final dataset saved. Total samples: {len(labels_list)}")
 
 
 def main():

@@ -5,20 +5,19 @@ from tensorflow.keras import layers, models, optimizers, callbacks
 from sklearn.model_selection import train_test_split
 import os
 import pickle
-# 整理されたvectorizerから定数と関数をインポート
+# ベクトライザから定数をインポート
 from .vectorizer import MAX_CONTEXT_LENGTH, MAX_CHOICES, VECTOR_DIM
 
 def build_masked_transformer(context_len=MAX_CONTEXT_LENGTH, choices_len=MAX_CHOICES, embed_dim=VECTOR_DIM, num_heads=4, ff_dim=256, num_transformer_blocks=2):
     """
-    【バグ修正版】マスキング層を追加したTransformerモデルを構築する。
+    選択肢をマスキングする機能を持つTransformerモデルを構築する。
     """
     # --- 3種類の入力層を定義 ---
     context_input = layers.Input(shape=(context_len, embed_dim), name="context_input")
     choices_input = layers.Input(shape=(choices_len, embed_dim), name="choices_input")
-    # マスク用の入力を追加 (1.0=有効, 0.0=無効)
-    mask_input = layers.Input(shape=(choices_len,), name="mask_input")
+    mask_input = layers.Input(shape=(choices_len,), name="mask_input") # マスク用入力 (1.0=有効, 0.0=無効)
 
-    # --- Context Encoder (Transformer) ---
+    # --- Context Encoder (Transformerブロック) ---
     x = context_input
     for _ in range(num_transformer_blocks):
         attn_output = layers.MultiHeadAttention(num_heads=num_heads, key_dim=embed_dim)(x, x)
@@ -29,10 +28,10 @@ def build_masked_transformer(context_len=MAX_CONTEXT_LENGTH, choices_len=MAX_CHO
         x = layers.Add()([x, ffn_output])
         x = layers.LayerNormalization(epsilon=1e-6)(x)
     
-    # 文脈全体を表現する単一のベクトルを生成
+    # 全てのイベント情報を集約し、文脈全体を表現する単一のベクトルを生成
     context_vector = layers.GlobalAveragePooling1D()(x)
     
-    # --- Score Head ---
+    # --- Score Head (スコア計算部分) ---
     # 文脈ベクトルを選択肢の数だけ複製
     context_repeated = layers.RepeatVector(choices_len)(context_vector)
     # [文脈] と [各選択肢] の情報を結合
@@ -44,7 +43,7 @@ def build_masked_transformer(context_len=MAX_CONTEXT_LENGTH, choices_len=MAX_CHO
     output_scores = layers.Dense(1, name="output_scores")(score_head)
     output_scores = layers.Reshape((choices_len,))(output_scores)
     
-    # --- ▼▼▼【重要】マスキング層の追加 ▼▼▼ ---
+    # --- マスキング処理 ---
     # マスク入力(0.0)に対応するスコアに非常に大きな負の値を加算する。
     # これにより、softmax関数を適用した際に、その選択肢の確率がほぼ0になる。
     masking_layer = (1.0 - mask_input) * -1e9
@@ -60,6 +59,7 @@ def build_masked_transformer(context_len=MAX_CONTEXT_LENGTH, choices_len=MAX_CHO
 def main():
     PROCESSED_DATA_PATH = 'processed_data/training_dataset_transformer.pkl'
     MODEL_PATH = 'models/senas_jan_ai_transformer_v1.keras'
+    os.makedirs('models', exist_ok=True)
 
     # --- 1. データセットの読み込み ---
     if not os.path.exists(PROCESSED_DATA_PATH):
@@ -68,7 +68,6 @@ def main():
 
     print(f"Loading processed dataset from {PROCESSED_DATA_PATH}...")
     with open(PROCESSED_DATA_PATH, 'rb') as f:
-        # マスクデータも読み込むように変更
         contexts, choices, labels, masks = pickle.load(f)
         
     print(f"\nData ready. Samples: {len(labels)}, Contexts shape: {contexts.shape}, Choices shape: {choices.shape}, Masks shape: {masks.shape}")
@@ -93,7 +92,7 @@ def main():
         callbacks.ModelCheckpoint(filepath=MODEL_PATH, monitor='val_accuracy', save_best_only=True, verbose=1)
     ]
     
-    # データを訓練用と検証用に分割 (マスクデータも同様に分割)
+    # データを訓練用と検証用に分割
     X_train_ctx, X_val_ctx, \
     X_train_cho, X_val_cho, \
     y_train, y_val, \
