@@ -54,7 +54,7 @@ def main():
     log_text = ""
     try:
         print("\nStep 2: Decoding file content from bytes to text (UTF-8)...")
-        log_text = xml_content.decode('utf-8').strip().replace("</mjloggm>", "")
+        log_text = xml_content.decode('utf-8').strip()
         print(" -> Success: Decoded content successfully.")
     except Exception as e:
         print(f"\nFATAL ERROR in Step 2: Could not decode the file content.")
