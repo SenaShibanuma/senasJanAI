@@ -70,26 +70,39 @@ class GameStateSimulator:
             actor, m = event['actor'], event['m']
             meld = self.parser._decode_meld(m)
             if meld.type:
-                # ▼▼▼【最終修正】ここから▼▼▼
-                # mahjongライブラリの仕様:
-                # 「加槓(kakan)」という行為は Meld.CHANKAN で表現される。
-                # (役の「槍槓(chankan)」と定数を共有しているため紛らわしい)
-                if meld.type == Meld.CHANKAN:
-                    # 加槓の場合、手牌から1枚だけ消える
+                # ▼▼▼【バグ修正】ここから▼▼▼
+                # 暗槓(KAN)の場合、手牌から4枚の牌を削除する
+                if meld.type == Meld.KAN:
+                    # 暗槓した牌の(0-33)形式を取得
+                    kan_tile_34 = meld.tiles[0] // 4
+                    # 手牌から同じ種類の牌を4枚探して削除する
+                    tiles_to_remove_from_hand = []
+                    for tile_in_hand in self.state['hands'][actor]:
+                        if tile_in_hand // 4 == kan_tile_34:
+                            tiles_to_remove_from_hand.append(tile_in_hand)
+                    
+                    # 4枚見つかった場合のみ削除を実行
+                    if len(tiles_to_remove_from_hand) == 4:
+                        for tile in tiles_to_remove_from_hand:
+                            self.state['hands'][actor].remove(tile)
+                    else:
+                         print(f"[SIMULATOR_ERROR] Ankan detected, but couldn't find 4 matching tiles in hand for actor {actor}")
+
+                # 加槓(CHANKAN)の場合、手牌から1枚だけ消える
+                elif meld.type == Meld.CHANKAN:
                     chakan_tile = meld.called_tile
                     tile_to_remove_34 = chakan_tile // 4
-                    # 手牌から同じ種類の牌を1枚探して削除
                     for tile_in_hand in self.state['hands'][actor]:
                         if tile_in_hand // 4 == tile_to_remove_34:
                             self.state['hands'][actor].remove(tile_in_hand)
                             break
+                # それ以外の鳴き(チー,ポン,大明槓)は鳴きに使った手牌を除く
                 else:
-                    # それ以外の鳴き(チー,ポン,大明槓)は鳴きに使った手牌を除く
                     tiles_to_remove = [t for t in meld.tiles if t != meld.called_tile]
                     for tile in tiles_to_remove:
                         if tile in self.state['hands'][actor]:
                             self.state['hands'][actor].remove(tile)
-                # ▲▲▲【最終修正】ここまで▲▲▲
+                # ▲▲▲【バグ修正】ここまで▲▲▲
             else:
                 print(f"[SIMULATOR_WARNING] Failed to decode meld data m={m} for actor {actor}")
 
@@ -126,20 +139,18 @@ def main(log_path):
         simulator.print_state()
 
 if __name__ == '__main__':
+    import sys
     try:
-        DATA_DIR = '/content/data'
-        TEST_FILE = '20061028gm-0001-0000-134c5173&tw=0.mjlog' 
-        test_file_path = os.path.join(DATA_DIR, TEST_FILE)
+        if len(sys.argv) > 1:
+            test_file_path = sys.argv[1]
+            if os.path.exists(test_file_path):
+                 main(test_file_path)
+            else:
+                print(f"Error: File not found at {test_file_path}")
+        else:
+            print("Usage: python -m src.transformer.investigate_state <path_to_log_file>")
 
-        if not os.path.exists(test_file_path):
-            try:
-                test_file_path = next(f.path for f in os.scandir(DATA_DIR) if f.is_file())
-            except StopIteration:
-                print(f"No log files found in {DATA_DIR}.")
-                exit()
-        main(test_file_path)
     except Exception as e:
         print(f"\n[FATAL ERROR] An error occurred in main execution: {e}")
         import traceback
         traceback.print_exc()
-

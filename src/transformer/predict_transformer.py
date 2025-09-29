@@ -22,21 +22,21 @@ def main():
     print("\n--- Preparing sample data for prediction ---")
     
     # --- 予測したい状況をここに設定 ---
-    # (例：東1局5巡目、自分がリーチをかけるべきか悩んでいる状況)
+    # ▼▼▼【バグ修正】サンプルデータを、学習時と同じ形式に修正しました ▼▼▼
     pov_player = 0
     sample_context_events = [
-        {'type': 'start_kyoku', 'bakaze': 'E', 'kyoku': 1, 'honba': 0, 'kyotaku': 0, 'oya': 0, 'scores': [25000, 25000, 25000, 25000], 'dora_marker': 4},
-        {'type': 'haipai', 'actor': 0, 'pai': ['1m', '2m', '3m', '4p', '5p', '6p', '7s', '8s', '9s', 'N', 'N', 'C', 'C']},
-        {'type': 'tsumo', 'actor': 0, 'pai': 'N'},
-        {'type': 'dahai', 'actor': 0, 'pai': 'C'},
-        # ... (中略) ...
-        {'type': 'tsumo', 'actor': 0, 'pai': '6s'},
+        {'event_id': 'INIT', 'round': 0, 'honba': 0, 'riichi_sticks': 0, 'scores': [25000, 25000, 25000, 25000], 'dora_indicator': 4},
+        {'event_id': 'DRAW', 'player': 0, 'tile': 135},
+        {'event_id': 'DISCARD', 'player': 0, 'tile': 134},
+        {'event_id': 'DRAW', 'player': 1, 'tile': 50},
+        {'event_id': 'DISCARD', 'player': 1, 'tile': 51},
+        {'event_id': 'DRAW', 'player': 0, 'tile': 24},
     ]
     sample_choices_str = [
-        "DAHAI_8",   # 2s
-        "DAHAI_24",  # 6s (ツモ切り)
-        "REACH_8",   # 2s切りリーチ
-        "REACH_24"   # 6s切りリーチ
+        "DISCARD_8",
+        "DISCARD_24",
+        "ACTION_RIICHI_8",
+        "ACTION_RIICHI_24"
     ]
     
     # --- ここから下は編集不要 ---
@@ -59,17 +59,28 @@ def main():
     model_inputs = [padded_context, padded_choices, prediction_mask]
     predictions = model.predict(model_inputs)
     
-    # 予測されたスコアを取得 (パディング分を除外)
-    scores = predictions[0][:len(sample_choices_str)]
+    # 予測されたスコア(logits)を取得 (パディング分を除外)
+    raw_scores = predictions[0][:len(sample_choices_str)]
     
-    # スコアが高い順にソート
-    top_indices = np.argsort(scores)[::-1]
+    # ▼▼▼【改善】ここから▼▼▼
+    # Softmax関数を適用して、生のスコアを確率に変換します
+    def softmax(x):
+        e_x = np.exp(x - np.max(x)) # オーバーフローを避けるための工夫
+        return e_x / e_x.sum(axis=0)
+
+    probabilities = softmax(raw_scores)
+    
+    # 確率が高い順にソート
+    top_indices = np.argsort(probabilities)[::-1]
 
     print("\n--- AI's Recommendations (Ranked) ---")
+    # スコアの代わりに、より分かりやすい確率(%)で表示するように変更しました
     for i, choice_idx in enumerate(top_indices):
         choice_str = sample_choices_str[choice_idx]
-        score = scores[choice_idx]
-        print(f"{i+1}. Action: {choice_str:<25} (Score: {score:.4f})")
+        probability = probabilities[choice_idx]
+        print(f"{i+1}. Action: {choice_str:<25} (Probability: {probability:.2%})")
+    # ▲▲▲【改善】ここまで▲▲▲
 
 if __name__ == '__main__':
     main()
+

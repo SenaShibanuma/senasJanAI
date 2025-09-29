@@ -15,18 +15,24 @@ class TransformerParser:
         self.hand_calculator = HandCalculator()
         self.reset_game_state()
 
-    # --- 鳴き解析メソッド ---
+    # --- 鳴き解析メソッド (バグ修正・最終版) ---
     @staticmethod
     def _decode_meld(meld_data):
+        """
+        全ての鳴き(チー, ポン, 大明槓, 暗槓, 加槓)を正しくデコードする。
+        判定の順序が非常に重要。
+        """
         meld = Meld()
-        if meld_data & (1 << 5):
-            TransformerParser._decode_chakan(meld, meld_data)
-        elif meld_data & (1 << 4):
-            TransformerParser._decode_kan(meld, meld_data)
+        # ビットフラグが小さいものから順番に判定していく
+        if meld_data & (1 << 2):
+            TransformerParser._decode_chi(meld, meld_data)
         elif meld_data & (1 << 3):
             TransformerParser._decode_pon(meld, meld_data)
-        elif meld_data & (1 << 2):
-            TransformerParser._decode_chi(meld, meld_data)
+        elif meld_data & (1 << 5):
+            TransformerParser._decode_chakan(meld, meld_data)
+        # 上記のいずれでもなければ、それは「カン」である
+        else:
+            TransformerParser._decode_kan(meld, meld_data)
         return meld
 
     @staticmethod
@@ -52,18 +58,20 @@ class TransformerParser:
 
     @staticmethod
     def _decode_kan(meld, meld_data):
+        """暗槓(Ankan)と大明槓(Daiminkan)を正しく判別する"""
         from_who = meld_data & 0x3
+        # from_whoが0の場合、それは自分のツモによる暗槓である
         if from_who == 0:
-            t, tile = (meld_data >> 8) & 0xFF, ((meld_data >> 8) & 0xFF) // 4
             meld.type, meld.opened = Meld.KAN, False
+            t, tile = (meld_data >> 8) & 0xFF, ((meld_data >> 8) & 0xFF) // 4
+        # それ以外は、他家からの大明槓である
         else:
-            t, tile = (meld_data >> 9) & 0x7F, ((meld_data >> 9) & 0x7F) // 3
             meld.type, meld.opened = Meld.DAIMINKAN, True
+            t, tile = (meld_data >> 9) & 0x7F, ((meld_data >> 9) & 0x7F) // 3
         meld.tiles = [tile * 4, tile * 4 + 1, tile * 4 + 2, tile * 4 + 3]
 
     @staticmethod
     def _decode_chakan(meld, meld_data):
-        # ▼▼▼【最終修正】ライブラリの仕様に合わせてCHANKANを使用する▼▼▼
         meld.type = Meld.CHANKAN
         c, t, tile = meld_data & 0x3, (meld_data >> 9) & 0x7F, ((meld_data >> 9) & 0x7F) // 3
         meld.tiles = [tile * 4, tile * 4 + 1, tile * 4 + 2, tile * 4 + 3]
@@ -282,4 +290,3 @@ class TransformerParser:
         elif meld.type == Meld.PON: return "ACTION_PUNG"
         elif meld.type in [Meld.DAIMINKAN, Meld.KAN]: return "ACTION_DAIMINKAN"
         return "UNKNOWN"
-

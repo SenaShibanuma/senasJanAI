@@ -3,7 +3,6 @@ import numpy as np
 import tensorflow as tf
 
 # --- グローバル定数 (プロジェクト全体で共有) ---
-# ▼▼▼【修正点】変数名を'MAX_CONTEXT_EVENTS'から'MAX_CONTEXT_LENGTH'に変更し、プロジェクト全体で統一しました ▼▼▼
 MAX_CONTEXT_LENGTH = 150
 MAX_CHOICES = 50
 VECTOR_DIM = 100
@@ -30,6 +29,11 @@ def vectorize_event(event, player_pov):
         if event_id == 'DISCARD': vec[11] = 1.0 if event.get('is_tedashi') else 0.0
     return vec
 
+# ▼▼▼【バグ修正】predict_transformer.pyで必要だったこの関数を追加しました ▼▼▼
+def vectorize_context(context_events, player_pov):
+    """複数のイベント辞書のリストを、ベクトルのリストに変換する"""
+    return [vectorize_event(e, player_pov) for e in context_events]
+
 def vectorize_choice(choice_str):
     """単一の選択肢文字列を固定長のベクトルに変換する"""
     vec = np.zeros(VECTOR_DIM, dtype=np.float32)
@@ -55,17 +59,15 @@ def preprocess_data(training_data):
         player_pov = data_point.get('player_pov')
         if player_pov is None: continue
         
-        # 正解ラベルが選択肢リスト内に存在することを確認
         try:
             label_index = data_point['choices'].index(data_point['label'])
         except ValueError:
-            continue # ラベルが存在しないデータはスキップ
+            continue
 
         contexts.append([vectorize_event(e, player_pov) for e in data_point['context']])
         choices_list.append([vectorize_choice(c) for c in data_point['choices']])
         labels.append(label_index)
 
-    # パディング処理
     padded_contexts = tf.keras.preprocessing.sequence.pad_sequences(
         contexts, maxlen=MAX_CONTEXT_LENGTH, dtype='float32', padding='post', truncating='post'
     )
@@ -73,7 +75,6 @@ def preprocess_data(training_data):
         choices_list, maxlen=MAX_CHOICES, dtype='float32', padding='post'
     )
     
-    # マスク生成: 実際の選択肢がある部分は1.0、パディング部分は0.0
     for choices in choices_list:
         mask = np.zeros(MAX_CHOICES, dtype='float32')
         mask[:len(choices)] = 1.0
