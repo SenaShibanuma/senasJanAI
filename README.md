@@ -1,43 +1,65 @@
-SenasJanAI - 麻雀AI開発プロジェクト
-これは、天鳳の牌譜データを活用して最強の麻雀AIを開発するプロジェクトの記録です。
+# SenasJanAI - 麻雀AI開発プロジェクト
 
-プロジェクトの目標
-PCでプレイされている麻雀ゲームの画面をリアルタイムに認識し、AIが最適な打牌を提案するツールの開発を目指します。最終的には、人間のトッププロの思考を模倣し、さらに自己対戦（強化学習）によって人間を超える独自の戦略を発見するAIを構築します。
+天鳳の牌譜データを活用して最強の麻雀AIを開発するプロジェクトの記録です。
 
-現在の進捗
-[x] Phase 1: 計画 - プロジェクト全体の技術選定と開発計画の策定。
+---
 
-[x] Phase 2: CNNモデル - CNNをベースにした初期モデル群を構築・検証。
+## プロジェクトの目標
 
-[x] Phase 3: Transformerモデルへの移行準備 - より高度な判断を実現するため、時間的文脈を理解できるTransformerモデルの設計に着手。
+- PCでプレイされている麻雀ゲームの画面をリアルタイムに認識し、AIが最適な打牌を提案するツールの開発を目指します。
+- 人間のトッププロの思考を模倣し、自己対戦（強化学習）によって人間を超える独自の戦略を発見するAIを構築します。
 
-[x] Phase 4: 牌譜パーサーの全面改修 - Transformerモデル用の新しいデータ形式に対応するため、transformer_parser.pyを新規開発。
+---
 
-[x] Phase 4.5: 徹底的なデバッグ - 新パーサーとシミュレーターの動作を検証し、あらゆる牌譜形式に対応できるよう修正を完了。 (完了！)
+## 現在の進捗
 
-[ ] Phase 5: Transformerモデルの学習 - 全データを用いて、Transformerモデルの本格的な学習を開始する。 (現在ここ)
+- [x] **Phase 1:** 計画 - 技術選定と開発計画の策定
+- [x] **Phase 2:** CNNモデル - 初期モデル群の構築・検証
+- [x] **Phase 3:** Transformerモデルへの移行準備 - 時間的文脈を理解できるモデル設計
+- [x] **Phase 4:** 牌譜パーサーの全面改修 - 新データ形式対応のtransformer_parser.py開発
+- [x] **Phase 4.5:** 徹底的なデバッグ - 新パーサーとシミュレーターの動作検証・修正（完了！）
+- [ ] **Phase 5:** Transformerモデルの学習 - 全データで本格的な学習（現在ここ）
+- [ ] **Phase 6:** 自己対戦（強化学習） - AI同士の対戦による戦略発見
 
-[ ] Phase 6: 自己対戦（強化学習） - AI同士を対戦させ、人間を超える戦略を発見させる。
+---
 
+## 各スクリプトの役割（`src/transformer/` ディレクトリ）
 
-各スクリプトの役割 (src/transformer/ ディレクトリ)
-プロジェクトの主要なロジックは src/transformer/ 内に集約されています。
+- **transformer_parser.py**  
+  天鳳の `.mjlog` ファイルを解析し、ゲームの出来事を時系列イベントデータに変換する心臓部。
 
-transformer_parser.py: 天鳳の.mjlogファイルを解析し、ゲームの出来事を時系列イベントデータに変換する、プロジェクトの心臓部。
+- **generate_data.py**  
+  `transformer_parser.py` を使って全牌譜ログを処理し、AI学習用の最終データセット（ベクトル化テンソル）を生成。
 
-generate_data.py: transformer_parser.pyを使って全ての牌譜ログを処理し、AIが学習できる形式の最終的なデータセット（ベクトル化されたテンソル）を生成します。
+- **train_transformer.py**  
+  生成したデータセットを読み込み、Transformerモデルの学習と保存を行う。
 
-train_transformer.py: generate_data.pyが生成したデータセットを読み込み、Transformerモデルの学習と保存を行います。
+- **predict_transformer.py**  
+  学習済みAIモデルを読み込み、与えられた状況に対して最適な行動を予測・提案。
 
-predict_transformer.py: 学習済みのAIモデルを読み込み、与えられた状況に対して最適な行動を予測・提案します。
+---
 
-実行方法
-データ準備: dataフォルダを作成し、解析したい.mjlogファイルを入れます。
+## 実行方法
 
-ライブラリインストール: pip install tensorflow mahjong scikit-learn
+1. **データ準備**  
+   `data` フォルダを作成し、解析したい `.mjlog` ファイルを入れる
 
-データセット生成: python -m src.transformer.generate_data
+2. **ライブラリインストール**  
+   ```sh
+   pip install tensorflow mahjong scikit-learn
+   ```
 
-AIの学習: python -m src.transformer.train_transformer
+3. **データセット生成**  
+   ```sh
+   python -m src.transformer.generate_data
+   ```
 
-AIによる予測: python -m src.transformer.predict_transformer
+4. **AIの学習**  
+   ```sh
+   python -m src.transformer.train_transformer
+   ```
+
+5. **AIによる予測**  
+   ```sh
+   python -m src.transformer.predict_transformer
+   ```
