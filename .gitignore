@@ -63,6 +63,8 @@ models/
 # Old directories no longer in use
 data_zip/
 data_unzipped/
+data/
+processed_data/
 
 # Old file no longer in use
 data.zip
