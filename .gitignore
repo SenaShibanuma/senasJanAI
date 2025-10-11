@@ -1,13 +1,68 @@
-/data/
-<<<<<<< HEAD
-/models/
-/processed_data/
-/src/__pycache__/
-=======
-/data_zip/
-/models/
-/processed_data/
-/src/transformer/__pycache__/
-/data.zip
-/data_unzipped/
->>>>>>> f0fb94ae28795f6be74cf4f7044ef4fda6955a09
+# Python general
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.hypothesis/
+
+# IDE / Editor specific
+.idea/
+.vscode/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# --- Project Specific --- #
+
+# Generated data from preprocess.py
+data/processed/
+
+# Generated models and logs from pretrain.py
+# It's good practice to not track large model files in git.
+# If you want to track the final model, uncomment the line below.
+models/
+# !models/tenho_model.keras
+
+# Old directories no longer in use
+data_zip/
+data_unzipped/
+
+# Old file no longer in use
+data.zip
