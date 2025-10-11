@@ -1,7 +1,70 @@
-/data/
-/data_zip/
-/models/
-/processed_data/
-/src/transformer/__pycache__/
-/data.zip
-/data_unzipped/
+# Python general
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.hypothesis/
+
+# IDE / Editor specific
+.idea/
+.vscode/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# --- プロジェクト固有の除外設定 --- #
+
+# preprocess.py によって生成されるデータ
+data/processed/
+
+# pretrain.py によって生成されるモデルとログ
+# サイズの大きいモデルファイルはgitで管理しないのが一般的です。
+# もし最終モデルを追跡したい場合は、下の行のコメントを解除してください。
+models/
+# !models/tenho_model.keras
+
+# 現在は使用されていない古いディレクトリ
+data_zip/
+data_unzipped/
+data/
+processed_data/
+
+# 現在は使用されていない古いファイル
+data.zip
