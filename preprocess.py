@@ -220,10 +220,16 @@ class TenhouDataGenerator:
         except: vec[36 + 8] = 1.0
         return vec
 
+import concurrent.futures
+
+def process_single_file(filepath):
+    generator = TenhouDataGenerator()
+    return generator.parse_log_file(filepath)
+
 def preprocess(raw_logs_dir, processed_dir, test_size, validation_size):
     print("Finding log files...")
-    filepaths = glob(os.path.join(raw_logs_dir, '*.mjlog'))
-    if not filepaths: print(f"No .mjlog files found in {raw_logs_dir}"); return
+    filepaths = glob(os.path.join(raw_logs_dir, '*.mjlog')) + glob(os.path.join(raw_logs_dir, '*.xml'))
+    if not filepaths: print(f"No .mjlog or .xml files found in {raw_logs_dir}"); return
     print(f"Found {len(filepaths)} log files.")
 
     if len(filepaths) < 3:
@@ -238,16 +244,28 @@ def preprocess(raw_logs_dir, processed_dir, test_size, validation_size):
         val_files = []
 
     datasets = {'train': train_files, 'validation': val_files, 'test': test_files}
-    generator = TenhouDataGenerator()
-
+    
     for name, files in datasets.items():
         if not files: continue
         print(f"\nProcessing {name} dataset ({len(files)} files)...")
         all_samples = []
-        for i, f in enumerate(files):
-            samples = generator.parse_log_file(f)
-            all_samples.extend(samples)
         
+        with concurrent.futures.ProcessPoolExecutor(max_workers=7) as executor:
+            futures = [executor.submit(process_single_file, f) for f in files]
+            
+            processed_count = 0
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    samples = future.result()
+                    if samples:
+                        all_samples.extend(samples)
+                except Exception as e:
+                    pass # Optionally handle exceptions
+                processed_count += 1
+                print(f"  -> Processed {processed_count}/{len(files)} files", end='\r')
+
+        print() # Newline after progress bar
+
         if not all_samples: print(f"No training samples generated for {name} dataset. Skipping."); continue
 
         print(f"Generated {len(all_samples)} samples for {name} dataset.")

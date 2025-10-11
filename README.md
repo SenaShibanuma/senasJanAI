@@ -1,75 +1,75 @@
-# SenasJanAI - Mahjong AI Pre-training Project
+# SenasJanAI - 麻雀AIの事前学習プロジェクト
 
-This project provides a complete pipeline to pre-train a Mahjong AI model based on the Transformer architecture. It parses Tenhou-style mahjong game logs (`.mjlog` files), converts them into a suitable format, and trains a model to predict human player actions.
+このプロジェクトは、Transformerベースの麻雀AIモデルを事前学習するための完全なパイプラインを提供します。天鳳形式の麻雀牌譜ログ（`.mjlog`ファイル）を解析し、適切な形式に変換して、人間のプレイヤーの行動を予測するモデルを学習します。
 
-This project has been refactored to run locally in a structured and easy-to-use manner, following the plan outlined in `事前学習の実行計画.md`.
+このプロジェクトは `事前学習の実行計画.md` に基づき、ローカル環境で構造的かつ簡単に実行できるようにリファクタリングされています。
 
 ---
 
-## Getting Started
+## セットアップ方法
 
-Follow these steps to set up the environment and run the training pipeline.
+以下の手順で、開発環境のセットアップと学習パイプラインの実行が可能です。
 
-### 1. Environment Setup
+### 1. 開発環境の構築
 
-It is highly recommended to use a Python virtual environment to avoid conflicts with other projects.
+他のプロジェクトとの競合を避けるため、Pythonの仮想環境を使用することを強く推奨します。
 
-First, find your Python 3.10 (or compatible) executable. Then, create the virtual environment:
+まず、Python 3.10（または互換性のあるバージョン）の実行ファイルを見つけ、仮想環境を構築してください。
 
 ```shell
-# Example path, replace with your actual Python path
+# 下記はパスの一例です。ご自身の環境に合わせて変更してください。
 C:\Users\YourUser\AppData\Local\Programs\Python\Python310\python.exe -m venv .venv
 ```
 
-This will create a `.venv` directory in the project root.
+これにより、プロジェクトのルートに `.venv` ディレクトリが作成されます。
 
-### 2. Install Dependencies
+### 2. 依存ライブラリのインストール
 
-Activate the virtual environment and install the required packages from `requirements.txt`.
+以下のコマンドで仮想環境を有効化し、`requirements.txt` に記載された必要なライブラリをインストールします。
 
 ```shell
-# Activate the venv
+# 仮想環境を有効化
 .venv\Scripts\activate.bat
 
-# Install packages
+# ライブラリをインストール
 pip install -r requirements.txt
 ```
 
-### 3. Data Preparation
+### 3. 学習データの準備
 
-Place your Tenhou-style mahjong log files (`.mjlog`) into the `data/raw_logs/` directory. A few sample files are already included.
+天鳳形式の麻雀牌譜ログ（`.mjlog`ファイル）を `data/raw_logs/` ディレクトリに配置してください。いくつかのサンプルファイルが既に含まれています。
 
 ---
 
-## How to Run
+## 実行方法
 
-The entire pipeline is managed by `main.py`. You can run the preprocessing and training steps together or separately.
+パイプライン全体は `main.py` によって管理されます。データの前処理とモデルの学習は、一括または個別で実行できます。
 
-Make sure your virtual environment is activated before running the commands.
+コマンドを実行する前に、仮想環境が有効化されていることを確認してください。
 
-### Run the Full Pipeline (Recommended)
+### パイプライン全体の実行（推奨）
 
-This command will first process the log files and then immediately start training the model.
+このコマンドは、まず牌譜ログを前処理し、その後すぐにモデルの学習を開始します。
 
 ```shell
 python main.py all
 ```
 
-### Run Steps Individually
+### ステップごとの個別実行
 
-If you only need to perform a specific step, you can use the following commands.
+特定のステップのみを実行したい場合は、以下のコマンドを使用します。
 
-**1. Preprocess Data Only:**
+**1. データの前処理のみ:**
 
-This reads the `.mjlog` files from `data/raw_logs/` and creates `train.npz`, `validation.npz`, and `test.npz` in the `data/processed/` directory.
+`data/raw_logs/` 内の `.mjlog` ファイルを読み込み、`data/processed/` ディレクトリに `train.npz`, `validation.npz`, `test.npz` を作成します。
 
 ```shell
 python main.py preprocess
 ```
 
-**2. Train Model Only:**
+**2. モデルの学習のみ:**
 
-This loads the `.npz` files from `data/processed/` and runs the training process. The final model will be saved as `models/tenho_model.keras`.
+`data/processed/` 内の `.npz` ファイルを読み込んで学習を開始します。最終的なモデルは `models/tenho_model.keras` として保存されます。
 
 ```shell
 python main.py pretrain
@@ -77,12 +77,12 @@ python main.py pretrain
 
 ---
 
-## About the Scripts
+## 各スクリプトの役割
 
--   **`main.py`**: The main entry point for the application. It parses command-line arguments and orchestrates the preprocessing and training workflow.
--   **`preprocess.py`**: Contains the logic for parsing `.mjlog` files, vectorizing game states and actions according to the model's required input format, and saving the processed data as NumPy `.npz` archives.
--   **`pretrain.py`**: Defines the model training loop. It loads the processed data, builds the Transformer model, and runs the training using TensorFlow/Keras, complete with callbacks for saving the best model and stopping early.
+-   **`main.py`**: アプリケーションのメインエントリーポイント。コマンドライン引数を解析し、前処理と学習のワークフローを制御します。
+-   **`preprocess.py`**: `.mjlog` ファイルの解析、ゲーム状況や行動のベクトル化、そして処理済みデータのNumPy `.npz` 形式での保存ロジックを含みます。
+-   **`pretrain.py`**: モデルの学習ループを定義します。処理済みデータをロードし、Transformerモデルを構築して、TensorFlow/Kerasで学習を実行します。最適なモデルの保存や早期終了のためのコールバックも含まれています。
 
-## Note on Model Performance
+## モデルの性能について
 
-The model's accuracy is highly dependent on the quantity and quality of the training data. The included sample logs are very few, so the resulting accuracy will be low. To train a powerful model, you should gather several thousand log files.
+モデルの精度は、学習データの量と質に大きく依存します。プロジェクトに含まれているサンプルログはごく少数であるため、得られるモデルの精度は低くなります。強力なモデルを学習させるには、数千局以上の牌譜ログを収集することを推奨します。
