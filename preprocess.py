@@ -245,11 +245,21 @@ def preprocess(raw_logs_dir, processed_dir, test_size, validation_size):
 
     datasets = {'train': train_files, 'validation': val_files, 'test': test_files}
     
+    batch_size = 5000  # Adjust batch size based on available memory
+
     for name, files in datasets.items():
         if not files: continue
         print(f"\nProcessing {name} dataset ({len(files)} files)...")
-        all_samples = []
         
+        output_path = os.path.join(processed_dir, f'{name}.npz')
+        
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        first_batch = True
+        all_samples = []
+        total_samples = 0
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=7) as executor:
             futures = [executor.submit(process_single_file, f) for f in files]
             
@@ -259,21 +269,40 @@ def preprocess(raw_logs_dir, processed_dir, test_size, validation_size):
                     samples = future.result()
                     if samples:
                         all_samples.extend(samples)
+                        
+                        if len(all_samples) >= batch_size:
+                            save_batch(output_path, all_samples, first_batch)
+                            total_samples += len(all_samples)
+                            print(f"  -> Saved batch. Total samples: {total_samples}", end='\r')
+                            all_samples = []
+                            if first_batch:
+                                first_batch = False
+
                 except Exception as e:
                     pass # Optionally handle exceptions
                 processed_count += 1
                 print(f"  -> Processed {processed_count}/{len(files)} files", end='\r')
 
+        if all_samples:
+            save_batch(output_path, all_samples, first_batch)
+            total_samples += len(all_samples)
+
         print() # Newline after progress bar
-
-        if not all_samples: print(f"No training samples generated for {name} dataset. Skipping."); continue
-
-        print(f"Generated {len(all_samples)} samples for {name} dataset.")
-        context_inputs = np.array([s['context_input'] for s in all_samples])
-        choices_inputs = np.array([s['choices_input'] for s in all_samples])
-        mask_inputs = np.array([s['mask_input'] for s in all_samples])
-        labels = np.array([s['label'] for s in all_samples])
-
-        output_path = os.path.join(processed_dir, f'{name}.npz')
-        np.savez_compressed(output_path, context_input=context_inputs, choices_input=choices_inputs, mask_input=mask_inputs, labels=labels)
+        print(f"Generated {total_samples} samples for {name} dataset.")
         print(f"Saved {name} dataset to {output_path}")
+
+def save_batch(output_path, samples, is_first_batch):
+    context_inputs = np.array([s['context_input'] for s in samples])
+    choices_inputs = np.array([s['choices_input'] for s in samples])
+    mask_inputs = np.array([s['mask_input'] for s in samples])
+    labels = np.array([s['label'] for s in samples])
+
+    if is_first_batch:
+        np.savez_compressed(output_path, context_input=context_inputs, choices_input=choices_inputs, mask_input=mask_inputs, labels=labels)
+    else:
+        with np.load(output_path) as data:
+            new_context_inputs = np.vstack([data['context_input'], context_inputs])
+            new_choices_inputs = np.vstack([data['choices_input'], choices_inputs])
+            new_mask_inputs = np.vstack([data['mask_input'], mask_inputs])
+            new_labels = np.hstack([data['labels'], labels])
+            np.savez_compressed(output_path, context_input=new_context_inputs, choices_input=new_choices_inputs, mask_input=new_mask_inputs, labels=new_labels)
