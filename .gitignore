@@ -49,22 +49,22 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# --- Project Specific --- #
+# --- プロジェクト固有の除外設定 --- #
 
-# Generated data from preprocess.py
+# preprocess.py によって生成されるデータ
 data/processed/
 
-# Generated models and logs from pretrain.py
-# It's good practice to not track large model files in git.
-# If you want to track the final model, uncomment the line below.
+# pretrain.py によって生成されるモデルとログ
+# サイズの大きいモデルファイルはgitで管理しないのが一般的です。
+# もし最終モデルを追跡したい場合は、下の行のコメントを解除してください。
 models/
 # !models/tenho_model.keras
 
-# Old directories no longer in use
+# 現在は使用されていない古いディレクトリ
 data_zip/
 data_unzipped/
 data/
 processed_data/
 
-# Old file no longer in use
+# 現在は使用されていない古いファイル
 data.zip
