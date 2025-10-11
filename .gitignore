@@ -1,2 +1,4 @@
 /data/
 /models/
+/processed_data/
+/src/__pycache__/
