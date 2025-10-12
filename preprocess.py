@@ -245,12 +245,20 @@ def preprocess(raw_logs_dir, processed_dir, test_size, validation_size):
 
     datasets = {'train': train_files, 'validation': val_files, 'test': test_files}
     
+    batch_size = 3000  # Adjust batch size based on available memory
+
     for name, files in datasets.items():
         if not files: continue
         print(f"\nProcessing {name} dataset ({len(files)} files)...")
-        all_samples = []
         
-        with concurrent.futures.ProcessPoolExecutor(max_workers=7) as executor:
+        temp_dir = os.path.join(processed_dir, f'temp_{name}')
+        os.makedirs(temp_dir, exist_ok=True)
+
+        all_samples = []
+        batch_num = 0
+        total_samples = 0
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=9) as executor:
             futures = [executor.submit(process_single_file, f) for f in files]
             
             processed_count = 0
@@ -259,21 +267,114 @@ def preprocess(raw_logs_dir, processed_dir, test_size, validation_size):
                     samples = future.result()
                     if samples:
                         all_samples.extend(samples)
+                        
+                        if len(all_samples) >= batch_size:
+                            batch_path = os.path.join(temp_dir, f'batch_{batch_num}.npz')
+                            save_batch(batch_path, all_samples)
+                            total_samples += len(all_samples)
+                            print(f"  -> Saved batch {batch_num}. Total samples: {total_samples}", end='\r')
+                            all_samples = []
+                            batch_num += 1
+
                 except Exception as e:
                     pass # Optionally handle exceptions
                 processed_count += 1
                 print(f"  -> Processed {processed_count}/{len(files)} files", end='\r')
 
+        if all_samples:
+            batch_path = os.path.join(temp_dir, f'batch_{batch_num}.npz')
+            save_batch(batch_path, all_samples)
+            total_samples += len(all_samples)
+
         print() # Newline after progress bar
-
-        if not all_samples: print(f"No training samples generated for {name} dataset. Skipping."); continue
-
-        print(f"Generated {len(all_samples)} samples for {name} dataset.")
-        context_inputs = np.array([s['context_input'] for s in all_samples])
-        choices_inputs = np.array([s['choices_input'] for s in all_samples])
-        mask_inputs = np.array([s['mask_input'] for s in all_samples])
-        labels = np.array([s['label'] for s in all_samples])
-
+        print(f"Generated {total_samples} samples for {name} dataset.")
+        
+        # Combine batches
         output_path = os.path.join(processed_dir, f'{name}.npz')
-        np.savez_compressed(output_path, context_input=context_inputs, choices_input=choices_inputs, mask_input=mask_inputs, labels=labels)
+        combine_batches(temp_dir, output_path)
         print(f"Saved {name} dataset to {output_path}")
+
+        # Clean up temp directory
+        for f in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, f))
+        os.rmdir(temp_dir)
+
+def save_batch(output_path, samples):
+    context_inputs = np.array([s['context_input'] for s in samples])
+    choices_inputs = np.array([s['choices_input'] for s in samples])
+    mask_inputs = np.array([s['mask_input'] for s in samples])
+    labels = np.array([s['label'] for s in samples])
+    np.savez_compressed(output_path, context_input=context_inputs, choices_input=choices_inputs, mask_input=mask_inputs, labels=labels)
+
+def combine_batches(temp_dir, output_path):
+    batch_files = sorted([os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.endswith('.npz')], 
+                         key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0]))
+    
+    if not batch_files:
+        print("No batch files to combine.")
+        return
+
+    # First, determine the total size from the first batch
+    with np.load(batch_files[0], mmap_mode='r') as data:
+        context_shape = data['context_input'].shape[1:]
+        choices_shape = data['choices_input'].shape[1:]
+        mask_shape = data['mask_input'].shape[1:]
+        labels_shape = data['labels'].shape[1:]
+        
+    total_samples = 0
+    for f in batch_files:
+        with np.load(f) as data:
+            total_samples += data['context_input'].shape[0]
+
+    # Define output paths for each .npy file
+    base_path = os.path.splitext(output_path)[0]
+    context_path = f"{base_path}_context.npy"
+    choices_path = f"{base_path}_choices.npy"
+    mask_path = f"{base_path}_mask.npy"
+    labels_path = f"{base_path}_labels.npy"
+
+    # Create memory-mapped arrays for each .npy file
+    final_context_inputs = np.memmap(context_path, dtype=np.float32, mode='w+', shape=(total_samples, *context_shape))
+    final_choices_inputs = np.memmap(choices_path, dtype=np.float32, mode='w+', shape=(total_samples, *choices_shape))
+    final_mask_inputs = np.memmap(mask_path, dtype=np.float32, mode='w+', shape=(total_samples, *mask_shape))
+    final_labels = np.memmap(labels_path, dtype=np.float32, mode='w+', shape=(total_samples, *labels_shape))
+
+    # Write data batch by batch
+    current_pos = 0
+    for f in batch_files:
+        with np.load(f) as data:
+            batch_size = data['context_input'].shape[0]
+            final_context_inputs[current_pos:current_pos+batch_size] = data['context_input']
+            final_choices_inputs[current_pos:current_pos+batch_size] = data['choices_input']
+            final_mask_inputs[current_pos:current_pos+batch_size] = data['mask_input']
+            final_labels[current_pos:current_pos+batch_size] = data['labels']
+            current_pos += batch_size
+    
+    # Flush memory maps to ensure data is written to disk
+    final_context_inputs.flush()
+    final_choices_inputs.flush()
+    final_mask_inputs.flush()
+    final_labels.flush()
+    
+    print(f"Saved individual .npy files at: {base_path}_*.npy")
+
+def combine_only(processed_dir, dataset_name='train'):
+    temp_dir = os.path.join(processed_dir, f'temp_{dataset_name}')
+    output_path = os.path.join(processed_dir, f'{dataset_name}.npz')
+    
+    if not os.path.exists(temp_dir):
+        print(f"一時ディレクトリが見つかりません: {temp_dir}")
+        return
+
+    print(f"'{dataset_name}' データセットのバッチを結合しています...")
+    combine_batches(temp_dir, output_path)
+    print(f"データセットを {output_path} に保存しました。")
+
+    # 一時ディレクトリをクリーンアップ
+    try:
+        for f in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, f))
+        os.rmdir(temp_dir)
+        print(f"一時ディレクトリ {temp_dir} をクリーンアップしました。")
+    except OSError as e:
+        print(f"一時ディレクトリのクリーンアップ中にエラーが発生しました: {e}")
