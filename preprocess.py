@@ -327,11 +327,15 @@ def combine_batches(temp_dir, output_path):
             total_samples += data['context_input'].shape[0]
 
     # Define output paths for each .npy file
-    base_path = os.path.splitext(output_path)[0]
-    context_path = f"{base_path}_context.npy"
-    choices_path = f"{base_path}_choices.npy"
-    mask_path = f"{base_path}_mask.npy"
-    labels_path = f"{base_path}_labels.npy"
+    # ★★★ 修正点: ファイルをサブディレクトリに保存するように変更 ★★★
+    base_name = os.path.splitext(os.path.basename(output_path))[0]
+    output_dir = os.path.join(os.path.dirname(output_path), base_name)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    context_path = os.path.join(output_dir, "context.npy")
+    choices_path = os.path.join(output_dir, "choices.npy")
+    mask_path = os.path.join(output_dir, "mask.npy")
+    labels_path = os.path.join(output_dir, "labels.npy")
 
     # Create memory-mapped arrays for each .npy file
     final_context_inputs = np.memmap(context_path, dtype=np.float32, mode='w+', shape=(total_samples, *context_shape))
@@ -356,7 +360,13 @@ def combine_batches(temp_dir, output_path):
     final_mask_inputs.flush()
     final_labels.flush()
     
-    print(f"Saved individual .npy files at: {base_path}_*.npy")
+    # ★★★ 追加: memmapオブジェクトを明示的に削除してファイルを閉じる ★★★
+    del final_context_inputs
+    del final_choices_inputs
+    del final_mask_inputs
+    del final_labels
+    
+    print(f"Saved individual .npy files at: {output_dir}")
 
 def combine_only(processed_dir, dataset_name='train'):
     temp_dir = os.path.join(processed_dir, f'temp_{dataset_name}')
