@@ -1,14 +1,20 @@
 import argparse
 import os
-from preprocess import preprocess
+from preprocess import preprocess, combine_only
 from pretrain import pretrain
 
 def main():
     parser = argparse.ArgumentParser(description="麻雀AIの事前学習・実行CLI")
     parser.add_argument(
         "action",
-        choices=["preprocess", "pretrain", "all"],
-        help="実行するアクション: 'preprocess' (データ前処理), 'pretrain' (モデル学習), or 'all' (両方)",
+        choices=["preprocess", "pretrain", "all", "combine"],
+        help="実行するアクション: 'preprocess' (データ前処理), 'pretrain' (モデル学習), 'combine' (バッチ結合のみ), or 'all' (両方)",
+    )
+    parser.add_argument(
+        "--dataset-name",
+        type=str,
+        default="train",
+        help="結合するデータセット名 ('train', 'validation', 'test')",
     )
     parser.add_argument(
         "--data-dir",
@@ -49,6 +55,14 @@ def main():
             validation_size=args.validation_size,
         )
         print("--- データの前処理が完了しました ---")
+
+    if args.action == "combine":
+        print("--- バッチファイルの結合を開始します ---")
+        combine_only(
+            processed_dir=processed_dir,
+            dataset_name=args.dataset_name
+        )
+        print("--- バッチファイルの結合が完了しました ---")
 
     if args.action == "pretrain" or args.action == "all":
         print("--- モデルの事前学習を開始します ---")
